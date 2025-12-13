@@ -1,3 +1,4 @@
+import google.generativeai as genai     #type: ignore
 from groq import Groq # type: ignore
 import sys
 import subprocess
@@ -5,17 +6,22 @@ import os
 import re
 
 #設定 API Key
-api_key_user = input("Please enter your own Groq API Key (gsk_...): ").strip()
-client = Groq(api_key = api_key_user)
+api_key_user = input("Please enter your own Google Gemini API Key: ").strip()
+genai.configure(api_key = api_key_user)
 
-#model types (Mapping Gemini roles to Groq Llama models)
-MODEL_FAST = 'llama-3.3-70b-versatile' 
-MODEL_SMART = 'llama-3.3-70b-versatile'
-MODEL_CREATIVE = 'llama-3.3-70b-versatile'
-MODEL_VISION = 'llama-3.3-70b-versatile' 
+#model types
+MODEL_FAST = 'models/gemini-2.5-flash'
+MODEL_SMART = 'models/gemini-2.5-flash'
+MODEL_CREATIVE = 'models/gemini-2.5-flash'
+MODEL_VISION = 'models/gemini-2.5-flash'
 
-# Groq 不需安全設定 list
-safety_settings = []
+#安全設定
+safety_settings = [
+    { "category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+    { "category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+    { "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+    { "category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+]
 
 #多次生成確保程式碼完整
 def loop_game_generate(code: str, response_planner: str, times_remain: int = 2) -> str:
@@ -39,15 +45,12 @@ def loop_game_generate(code: str, response_planner: str, times_remain: int = 2) 
             f"\n\n待審查程式碼:\n{current_code}"
         )
         
-        # Groq Call
-        audit_response = client.chat.completions.create(
-            model=MODEL_SMART,
-            messages=[{"role": "user", "content": audit_prompt}]
-        )
-        critique = audit_response.choices[0].message.content
+        model_auditor = genai.GenerativeModel(MODEL_SMART)
+        audit_response = model_auditor.generate_content(audit_prompt, safety_settings = safety_settings)
+        critique = audit_response.text
 
         # 重構階段 (The Refactorer)
-        # Refiner needs intelligence, mapping to SMART (70b) instead of FAST
+        model = genai.GenerativeModel('gemini-2.0-flash-thinking-exp')
         refine_prompt = (
             "你是一個資深的 Python 遊戲重構工程師。"
             "請根據「原始程式碼」以及「審查員的批評」，重寫並優化程式碼。\n\n"
@@ -60,15 +63,11 @@ def loop_game_generate(code: str, response_planner: str, times_remain: int = 2) 
             "4. 只輸出 Python 程式碼，不要輸出解釋文字。"
         )
 
-        # Groq Call
-        refine_response = client.chat.completions.create(
-            model=MODEL_SMART, 
-            messages=[{"role": "user", "content": refine_prompt}]
-        )
-        refined_text = refine_response.choices[0].message.content
+        model_refiner = genai.GenerativeModel(MODEL_FAST)
+        refine_response = model_refiner.generate_content(refine_prompt, safety_settings=safety_settings)
         
-        if len(refined_text) > 100:
-            current_code = clean_code(refined_text)
+        if len(refine_response.text) > 100:
+            current_code = clean_code(refine_response.text)
         else:
             print("❌ 優化失敗，生成內容不完整，跳過此輪。")
 
@@ -95,6 +94,8 @@ def clean_code(raw_text: str) -> str:
 def complete_prompt(user_prompt: str) -> str:
     print("🛡️ 正在進行輸入安全檢查與優化...")
     
+    model = genai.GenerativeModel(MODEL_FAST)
+    
     system_instruction = (
         "你是一個 AI 遊戲需求分析師與安全官。"
         
@@ -113,15 +114,9 @@ def complete_prompt(user_prompt: str) -> str:
     )
     
     try:
-        # Groq Call
-        response = client.chat.completions.create(
-            model=MODEL_FAST,
-            messages=[
-                {"role": "user", "content": f"{system_instruction}\n\n使用者原始輸入: {user_prompt}"}
-            ]
-        )
+        response = model.generate_content(f"{system_instruction}\n\n使用者原始輸入: {user_prompt}")
         
-        refined_prompt = response.choices[0].message.content.strip()
+        refined_prompt = response.text.strip()
         
         if refined_prompt.startswith("INVALID"):
             print(f"⚠️ 警告：{refined_prompt}")
@@ -161,18 +156,12 @@ def generate_py(user_prompt) -> str:
         "不要天馬行空地幻想不存在的功能。盡量利用 Manifest 中已有的組件來組合遊戲。"
         "如果 Manifest 中沒有適合的組件，才允許描述需要從頭撰寫的邏輯。"
     )
-    
-    # Groq Call
-    response_planner = client.chat.completions.create(
-        model=MODEL_CREATIVE,
-        messages=[
-            {"role": "user", "content": f"{system_instruction_planner}\n\n使用者需求: {user_prompt}"}
-        ]
-    )
-    planner_text_1 = response_planner.choices[0].message.content
+    model_planner = genai.GenerativeModel(MODEL_CREATIVE)
+    response_planner = model_planner.generate_content(f"{system_instruction_planner}\n\n使用者需求: {user_prompt}",
+                                              safety_settings = safety_settings)
     print("✅ 企劃書1已生成完畢。")
 
-    system_instruction_planner_2 = (
+    system_instruction_planner = (
         "你是一個精通 Python Pygame 的資深技術企劃師 (Technical Game Designer)。"
         #"你的任務是將初步計劃書不夠詳盡的需求，轉化為一份「可被 RAG 系統執行」的企業級技術企劃書。"
         "你的任務是將 **初步計劃書延伸，使其更詳盡**，並且是「可被系統執行」的企業級技術企劃書。"
@@ -194,15 +183,8 @@ def generate_py(user_prompt) -> str:
         "不要天馬行空地幻想不存在的功能。盡量利用 Manifest 中已有的組件來組合遊戲。"
         "如果 Manifest 中沒有適合的組件，才允許描述需要從頭撰寫的邏輯。"
     )
-
-    # Groq Call
-    response_planner_2 = client.chat.completions.create(
-        model=MODEL_CREATIVE,
-        messages=[
-            {"role": "user", "content": f"{system_instruction_planner_2}\n\n初步企劃書: {planner_text_1}"}
-        ]
-    )
-    planner_text_final = response_planner_2.choices[0].message.content
+    response_planner = model_planner.generate_content(f"{system_instruction_planner}\n\n初步企劃書: {response_planner.text}",
+                                              safety_settings = safety_settings)
     print("✅ 企劃書2已生成完畢。")
 
     folder = "dest"
@@ -210,7 +192,7 @@ def generate_py(user_prompt) -> str:
     os.makedirs(folder, exist_ok = True)
     filename = os.path.join(folder, filename)
     with open(filename, "w", encoding="utf-8") as f:
-        f.write(planner_text_final)
+        f.write(response_planner.text)
 
     #遊戲工程師
     system_instruction_designer = (
@@ -241,20 +223,13 @@ def generate_py(user_prompt) -> str:
         "4. 必須包含一個基於 GUI (pygame_gui 或自行繪製) 的規則說明頁面，按任意鍵開始遊戲。"
     )
     
-    # Groq Call
-    response_designer = client.chat.completions.create(
-        model=MODEL_SMART,
-        messages=[
-            {"role": "user", "content": f"{system_instruction_designer}\n\n企劃書: {planner_text_final}"}
-        ]
-    )
-    designer_text = response_designer.choices[0].message.content
-
-    if not designer_text:
+    model_designer = genai.GenerativeModel(MODEL_SMART)
+    response_designer = model_designer.generate_content(f"{system_instruction_designer}\n\n企劃書: {response_planner.text}",
+                                               safety_settings = safety_settings)
+    if not response_designer.text:
         print("❌ 程式碼生成失敗，請稍後再試。")
         sys.exit(1)
-    
-    code_content = loop_game_generate(designer_text, planner_text_final)
+    code_content = loop_game_generate(response_designer.text, response_planner.text)
     
     # 清理可能殘留的 Markdown 標記
     code_content = clean_code(code_content)
@@ -276,15 +251,10 @@ def generate_py(user_prompt) -> str:
         "【輸出格式】"
         "直接輸出修正後的完整 Python 程式碼 (Full Code)。不要輸出 Markdown 解釋，不要廢話。"
     )
-
-    # Groq Call
-    response_debugger = client.chat.completions.create(
-        model=MODEL_SMART,
-        messages=[
-            {"role": "user", "content": f"{system_instruction_debugger}\n\n企劃書: {planner_text_final}\n\n程式碼: {code_content}"}
-        ]
-    )
-    code_content = response_debugger.choices[0].message.content
+    model_debugger = genai.GenerativeModel(MODEL_SMART)
+    response_debugger = model_debugger.generate_content(f"{system_instruction_debugger}\n\n企劃書: {response_planner.text}\n\n程式碼: {code_content}",
+                                               safety_settings = safety_settings)
+    code_content = response_debugger.text
 
     # 清理可能殘留的 Markdown 標記
     code_content = clean_code(code_content)
@@ -360,12 +330,8 @@ def error_solving(error_msg, code_content) -> str:
         "直接輸出修復後、可直接執行的完整 Python 程式碼 (Full Code)。"
         "嚴禁輸出 Markdown 標記 (如 ```python)，嚴禁輸出任何解釋文字。"
     )
-    
-    # Groq Call
-    response_debugger = client.chat.completions.create(
-        model=MODEL_SMART,
-        messages=[
-            {"role": "user", "content": f"""
+    model = genai.GenerativeModel(MODEL_SMART)
+    response_debugger = model.generate_content(f"""
             {system_instruction_error_solver}
 
             === 執行期錯誤報告 (Runtime Error Traceback) ===
@@ -377,10 +343,9 @@ def error_solving(error_msg, code_content) -> str:
             ==============================================
 
             請根據上方的錯誤報告，修復原始程式碼。
-            """}
-        ]
+            """
     )
-    code_content = response_debugger.choices[0].message.content
+    code_content = response_debugger.text
     code_content = clean_code(code_content)
     code_to_py(code_content)
     return code_content

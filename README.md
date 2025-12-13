@@ -1,0 +1,1 @@
+輸入以下指令以下載資料包: pip install -r requirements.txt

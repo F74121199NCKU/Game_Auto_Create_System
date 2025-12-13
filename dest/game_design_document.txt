@@ -1,214 +1,242 @@
-好的，作為一名資深技術企劃師，我將根據您提供的初步企劃書，並基於對 Pygame 遊戲架構的理解，將其轉化為一份「可被系統執行」的企業級技術企劃書。
+好的，資深技術企劃師已收到您的需求。根據您提供的「星際突襲 (Interstellar Assault)」遊戲概念，以及對技術模組的建議，我已將其轉換為一份更詳盡、更具「可被系統執行」特性的企業級技術企劃書。
 
 ---
 
-# 經典棒球對決 - 企業級技術企劃書
+## 星際突襲 (Interstellar Assault) - 企業級技術企劃書
 
-## 1. Game Overview
+### 1. Game Overview
 
-*   **遊戲名稱**: 經典棒球對決
-*   **核心玩法簡述**:
-    「經典棒球對決」是一款以棒球運動中核心的「投打對決」為主題的模擬競技遊戲。玩家將沉浸於投手與打者之間鬥智鬥力的關鍵時刻。遊戲提供兩種核心模式：
-    1.  **投球模式**: 玩家扮演投手，需策略性地選擇多種球路（如快速球、變化球、滑球等），並精準控制投球區域，以智取電腦AI打者，力求三振或製造出局。
-    2.  **打擊模式**: 玩家扮演打者，需高度專注於判斷來球的時機、速度與軌跡，精準揮棒擊球，以追求安打、長打乃至於全壘打，突破電腦AI投手的防線。
-    遊戲完整參照現實世界的棒球規則，透過即時記分板、詳細的規則說明，以及可自定義的自動化守備與跑壘機制，讓玩家能將注意力完全集中在體驗純粹的投打樂趣上。
+**遊戲名稱：** 星際突襲 (Interstellar Assault)
 
-## 2. Technical Architecture
+**核心玩法簡述：**
+《星際突襲》是一款垂直滾動的太空射擊遊戲。玩家將駕駛一艘高性能太空戰機，在無垠的宇宙中向上飛行，與波次襲來的敵機進行激戰。遊戲目標是通過精準的射擊和靈敏的閃避，擊敗所有敵人、強大Boss，並收集火力強化、護盾、額外生命等掉落道具，以盡可能地延長生存時間並獲得最高分數。玩家飛船具有生命值，每一次碰撞或被擊中都會損失生命，直至生命歸零則遊戲結束。
 
-**重要提示**: 由於使用者提供的「系統能力清單 (System Manifest)」為空，以下模組清單是基於對 Pygame 遊戲開發常見組件的合理假設。以下模組將被視為現有或需從頭開發，以支撐「經典棒球對決」的遊戲邏輯與表現。
+### 2. Technical Architecture
 
-以下為「經典棒球對決」遊戲所需載入或開發的關鍵技術模組：
+以下是《星際突襲》遊戲將需要載入的模組清單，並說明其用途。這些模組將盡可能地利用我們現有的系統能力，以確保開發效率與穩定性。
 
-*   `- [Load] InputManager`: 用於捕捉和解析玩家的所有輸入，包括鍵盤、滑鼠事件。在投球模式下處理球種選擇、投球瞄準區調整和投球動作確認；在打擊模式下處理揮棒時機、方向和力量輸入。
-*   `- [Load] SpriteRenderer`: 負責遊戲中所有2D視覺元素的繪製，包括遊戲背景（棒球場）、球員角色（投手、打者、跑者、守備員）的靜態圖像或動畫幀、棒球、UI元素文字與圖標。該模組需高效處理圖像載入、縮放和位置更新。
-*   `- [Load] AnimationSystem`: 管理遊戲中各個實體的動畫播放。它將處理投手的投球準備、投球、捕手接球動畫；打者的揮棒、擊球、跑壘動畫；以及棒球的旋轉和各種擊球特效動畫序列。
-*   `- [Load] CollisionManager`: 專責遊戲內所有碰撞事件的檢測與處理。主要用於：
-    *   **球棒與棒球碰撞**: 判定擊球成功與否、擊球點、擊球力量。
-    *   **棒球與地面/牆壁碰撞**: 處理球的彈跳物理。
-    *   **棒球與守備員碰撞**: 判定守備員是否成功接殺或攔截球。
-    *   （可擴展）**跑者與壘包碰撞**: 判定跑者是否安全上壘或回本壘。
-*   `- [Load] SceneManager`: 管理遊戲不同畫面或階段的切換與生命週期。負責載入、卸載和初始化不同的遊戲場景，例如：主選單、遊戲模式選擇、遊戲進行中、規則說明、遊戲結束畫面等。
-*   `- [Load] UISystem`: 用於構建和管理遊戲中的所有用戶介面 (UI)。包括：實時記分板（顯示比分、局數、好壞球/出局數）、模式切換按鈕、暫停選單、詳細的棒球規則說明介面、投球選擇介面、投球瞄準器、揮棒時機指示器等。
-*   `- [Load] SoundManager`: 負責遊戲內所有音效和背景音樂的播放、管理和音量控制。包括擊球聲、裁判喊話、觀眾歡呼聲、球落地聲、特效音、勝利/失敗音樂等，以提升遊戲的聽覺沉浸感。
-*   `- [Load] ObjectPool`: 實作物件池模式，用於高效管理和重用遊戲中頻繁創建和銷毀的物件，以減少記憶體分配和垃圾回收的開銷。常見應用於：擊出後的棒球實體、粒子特效（如擊球火花、揚塵）、UI 元素等。
-*   `- [Load] StateMachine`:
-    *   **全局遊戲狀態機**: 管理遊戲的頂層流程，如：`MainMenuState` -> `GameLobbyState` -> `PlayGameState` -> `GameOverState`。
-    *   **實體行為狀態機**: 管理玩家和 AI 角色的複雜行為模式，例如：
-        *   **投手**: `Idle` -> `Windup` -> `Pitching` -> `Recovery`。
-        *   **打者**: `Waiting` -> `JudgingPitch` -> `Swinging` -> `Running`。
-        *   **棒球**: `InFlight` -> `HitGround` -> `Caught` -> `Foul`。
-*   `- [Load] EventManager`: 提供一套強健的發布/訂閱機制，用於處理遊戲內部模組間的通訊和狀態變化。例如，當好球/壞球判定時，發布事件通知 `UISystem` 更新顯示；當擊球結果確定時，通知 `AIManager` 調整防守策略或 `PhysicsComponent` 更新球的狀態。
-*   `- [Load] GameTimer`: 提供遊戲內部的精確計時功能，用於控制各種時間相關的遊戲邏輯。例如，投球動畫的精準時機、打者揮棒的有效時間窗口、棒球飛行時間計算、AI決策的延遲、遊戲局間暫停等。
-*   `- [Load] AIManager`: 專門設計和管理電腦控制的遊戲角色行為。包括：
-    *   **AI 投手**: 根據比分、好壞球數、局數等情境動態選擇球種和投球區域。模擬投球精準度。
-    *   **AI 打者**: 根據來球速度、軌跡和球種判斷揮棒時機、擊球方向和力量。
-    *   **AI 守備與跑壘**: 基本的自動守備跑位、接球判斷；跑者的起跑、加速、滑壘決策。
-*   `- [Load] ParticleSystem`: 用於生成並管理遊戲中的視覺特效，以增強視覺回饋。例如，擊出全壘打時的爆炸火花、棒球擊中地面揚起的塵土、擊中球棒的瞬間火花、揮棒殘影等。
+*   **[Load] ResourceManager:** 統一管理遊戲中的所有外部資源。負責加載紋理 (Sprites)、音效 (Sound Effects)、音樂 (Music) 等文件至內存，並提供緩存機制，防止重複加載。確保高效的資源使用和內存管理。例如：載入玩家飛船、敵機、子彈、道具等所有遊戲物件的圖像，以及射擊、爆炸、收集道具等音效。
+*   **[Load] PlayerInputComponent:** 抽象化玩家的輸入處理。接收來自鍵盤、滑鼠或遊戲手把的原始輸入事件 (如 `pygame.KEYDOWN`, `pygame.MOUSEBUTTONDOWN`)，將其轉換為遊戲邏輯可識別的動作指令 (例如 `MOVE_UP`, `FIRE_WEAPON`)，並傳遞給玩家實體進行處理。
+*   **[Load] ShootingComponent:** 提供基礎的射擊行為邏輯。可配置子彈類型、發射頻率、起始位置、發射角度和攻擊力。該組件能被玩家飛船、敵機及Boss共用，根據擁有者生成對應陣營的子彈實例。
+*   **[Load] ObjectPool:** 實現高效的物件生命週期管理。用於頻繁創建和銷毀的遊戲物件，如玩家子彈、敵人子彈、爆炸粒子、道具等。透過預先創建一組物件並在需要時重用，顯著減少運行時的內存分配與垃圾回收開銷，提升遊戲性能。
+*   **[Load] HealthComponent:** 為遊戲中所有具有生命值的實體（玩家、敵機、Boss）提供標準化的生命值管理接口。包含生命值上限、當前生命值、受傷 (`take_damage()`)、治療 (`heal()`)、是否存活 (`is_alive()`) 等邏輯。當生命值歸零時，會觸發死亡事件。
+*   **[Load] SpatialGrid:** 實現優化的大規模碰撞檢測。將遊戲世界劃分為一系列均勻的網格。遊戲實體會被放入其所在或跨越的網格中。碰撞檢測時，只需檢查實體所在網格及其相鄰網格內的物件，而非遍歷所有物件，從而大幅提升玩家飛船、敵機、子彈和道具等大量實體間的碰撞檢測效率。
+*   **[Load] ParallaxScrollingComponent:** 實現多層次的視差滾動背景效果。管理多個背景層，每層以不同的速度和方向滾動，營造深邃的宇宙空間感和視覺豐富度。背景圖像將由 `ResourceManager` 加載。
+*   **[Load] StateMachineComponent:** 提供可配置的有限狀態機邏輯。主要用於控制複雜敵機和Boss的行為模式，如移動路徑切換、攻擊模式轉換（散彈、雷射）、階段性技能釋放等。它定義了狀態、狀態轉換條件及各狀態下的行為。
+*   **[Load] ParticleSystemComponent:** 處理遊戲中各類視覺特效。用於生成和管理粒子，如爆炸碎片、子彈拖尾、飛船推進器火焰、道具收集光效、受擊火花等。透過參數化配置粒子的生命週期、顏色、大小、速度和透明度等屬性，增加遊戲的動態感和反饋。
+*   **[Load] UIComponent:** 負責遊戲介面 (UI) 的渲染與互動邏輯。包括主菜單、遊戲HUD (顯示玩家生命值、分數、武器等級、護盾狀態)、暫停菜單、遊戲結束畫面及高分榜。處理UI元素的佈局、文本渲染、按鈕事件等。
+*   **[Load] AudioMixer:** 管理遊戲音效與背景音樂的播放。提供播放、停止、暫停、音量控制及混音功能。確保背景音樂與音效之間良好協調，並允許動態調整各類音頻的音量。
+*   **[New] PowerUpSystem:** 專門處理遊戲中所有掉落道具的生成、效果應用及持續時間管理。當敵機被摧毀時，此系統根據預設機率決定是否生成特定道具。當玩家收集道具時，此系統負責解析道具類型（火力強化、護盾、額外生命等），並在玩家實體上應用相應的效果，包括效果的疊加與時效性管理。此為遊戲核心玩法之一，需從頭設計實現。
+*   **[New] WaveManager:** 負責管理敵機波次的生成邏輯。定義每一波次的敵機種類、數量、生成模式和時間間隔。同時，它也負責在特定波次後觸發Boss戰，並管理Boss的生命階段和攻擊模式切換。此系統將協調 `Enemy` 和 `Boss` 實體的創建，並使用 `ObjectPool` 進行管理。此為遊戲特有內容，需從頭設計實現。
+*   **[New] ScoreManager:** 處理遊戲分數的累計、高分榜的顯示與存儲。當玩家摧毀敵機、Boss或完成特定成就時，此系統會更新當前分數。在遊戲結束時，負責處理玩家在高分榜上的記錄，包括姓名輸入、分數排序和本地存儲與讀取。此為遊戲特有內容，需從頭設計實現。
 
-*   `- [New Logic] PhysicsComponent`: 由於 Pygame 本身不提供複雜的物理引擎，此組件需要從頭撰寫。它將基於牛頓運動定律和向量物理，模擬棒球的運動軌跡、速度和旋轉。
-    *   **棒球飛行模擬**: 考慮重力、空氣阻力，以及球種所帶來的馬格努斯效應 (Magnus effect)，以精確模擬快速球、變化球、滑球等的真實軌跡。
-    *   **碰撞響應**: 處理棒球與球棒、地面、牆壁等碰撞後的反彈速度和角度計算，模擬動量傳遞。
-    *   **時間步進**: 以固定或變化的時間步長，在每個遊戲幀中更新所有受物理影響的實體狀態。
+### 3. Game Rules & Logic
 
-## 3. Game Rules & Logic
+**3.1 遊戲狀態流程 (State Flow)**
 
-遊戲狀態流程將嚴格遵循棒球比賽的實際規則，並以有限狀態機 (`StateMachine`) 進行管理，確保遊戲流程的穩定性和可預測性。
+遊戲將採用基於 `pygame` 的主循環，透過一個頂層的遊戲管理器 `Game` 類來維護當前遊戲狀態，並在不同狀態間進行切換。
 
-1.  **MainMenuState (主選單狀態)**
-    *   **進入**: 遊戲啟動時的初始狀態。顯示遊戲標題、背景音樂、主要操作按鈕（如「開始遊戲」、「規則說明」、「離開遊戲」）。
-    *   **更新**: 偵測玩家輸入。
-    *   **事件觸發/離開**:
-        *   玩家點擊「開始遊戲」按鈕 -> 切換至 `GameLobbyState`。
-        *   玩家點擊「規則說明」按鈕 -> 切換至 `RulesDisplayState`。
-        *   玩家點擊「離開遊戲」按鈕 -> 發送退出事件，結束應用程式。
+*   **MainMenu (主菜單):**
+    *   `進入 (Entry)`:
+        *   `AudioMixer` 播放主菜單背景音樂。
+        *   `UIComponent` 渲染主菜單介面，包含遊戲標題、"開始遊戲"、"設定"、"離開" 等按鈕。
+    *   `行為 (Behavior)`:
+        *   `PlayerInputComponent` 接收玩家輸入，`UIComponent` 處理菜單選項的導航和選擇。
+        *   等待玩家選擇。
+    *   `轉移 (Transitions)`:
+        *   玩家選擇"開始遊戲" -> 觸發狀態切換至 `Gameplay` 狀態。
+        *   玩家選擇"設定" -> 觸發狀態切換至 `Options` 狀態。
+        *   玩家選擇"離開" -> 觸發 `pygame.quit()` 退出遊戲。
 
-2.  **RulesDisplayState (規則說明狀態)**
-    *   **進入**: 載入並顯示詳細的棒球規則文字、圖解及操作說明。
-    *   **更新**: 偵測玩家輸入（如滾動、返回）。
-    *   **事件觸發/離開**:
-        *   玩家點擊「返回」按鈕 -> 切換至 `MainMenuState`。
+*   **Options (設定):**
+    *   `進入 (Entry)`:
+        *   `UIComponent` 渲染設定介面，提供音量 (由 `AudioMixer` 控制)、控制方式等選項。
+    *   `行為 (Behavior)`:
+        *   `PlayerInputComponent` 接收玩家輸入，`UIComponent` 處理設定選項的調整。
+        *   玩家可調整各類數值，並實時應用（如音量）。
+    *   `轉移 (Transitions)`:
+        *   玩家選擇"返回" -> 觸發狀態切換至前一個狀態（通常是 `MainMenu` 或 `PauseMenu`）。
 
-3.  **GameLobbyState (遊戲準備狀態)**
-    *   **進入**: 顯示遊戲設定介面。玩家可在此選擇：
-        *   **扮演角色**: 玩家選擇作為「打者」或「投手」。
-        *   **遊戲選項**: 設定遊戲局數（如3局、9局）、守備與跑壘的自動/半自動控制、難度等級等。
-        *   **球隊選擇**: （可選）選擇主客隊。
-    *   **更新**: 根據玩家輸入更新設定選項。
-    *   **事件觸發/離開**:
-        *   玩家確認設定後點擊「開始比賽」按鈕 -> 將所選設定傳遞給 `PlayGameState`，並切換至 `PlayGameState`。
+*   **Gameplay (遊戲進行中):**
+    *   `進入 (Entry)`:
+        *   重置所有遊戲數據 (`ScoreManager` 歸零分數, `HealthComponent` 初始化玩家生命)。
+        *   `PlayerInputComponent` 啟動玩家輸入監聽。
+        *   `AudioMixer` 停止主菜單音樂，播放遊戲背景音樂。
+        *   初始化玩家飛船實例。
+        *   `ParallaxScrollingComponent` 初始化背景層。
+        *   `WaveManager` 啟動敵機波次生成。
+        *   `UIComponent` 渲染遊戲HUD (生命值、分數、武器等級)。
+        *   `ObjectPool` 預熱子彈及粒子實例。
+    *   `行為 (Behavior)`: (每遊戲幀更新一次)
+        *   `PlayerInputComponent` 接收並處理玩家移動及射擊指令，更新玩家飛船狀態。
+        *   玩家飛船透過 `ShootingComponent` 生成子彈，子彈實例從 `ObjectPool` 中獲取。
+        *   `WaveManager` 根據時間和條件生成敵機及Boss。
+        *   所有敵機實體根據其內部的 `StateMachineComponent` 邏輯進行移動和攻擊。敵機子彈也由 `ShootingComponent` 生成，並從 `ObjectPool` 中獲取。
+        *   所有遊戲實體（玩家、敵機、子彈、道具）根據其速度和方向向量更新位置。
+        *   `SpatialGrid` 每幀更新實體在網格中的位置，並執行高效碰撞檢測。
+        *   **碰撞檢測與響應 (由遊戲循環調度，利用 `SpatialGrid` 執行):**
+            *   玩家飛船與敵機/敵方子彈碰撞：`HealthComponent` 扣除玩家生命值。若玩家有護盾（由 `PowerUpSystem` 管理），則抵擋傷害。觸發 `AudioMixer` 播放受擊音效，`ParticleSystemComponent` 生成受擊特效。
+            *   玩家子彈與敵機碰撞：敵機的 `HealthComponent` 扣除生命值。若敵機生命歸零，則觸發其死亡事件，`AudioMixer` 播放爆炸音效，`ParticleSystemComponent` 生成爆炸特效，`ScoreManager` 累計分數，`PowerUpSystem` 根據機率生成掉落道具。
+            *   玩家飛船與掉落道具碰撞：`PowerUpSystem` 識別道具類型並在玩家實體上應用效果（如火力強化、護盾、額外生命）。`AudioMixer` 播放收集音效。
+        *   `PowerUpSystem` 管理所有激活中的道具效果及其持續時間。
+        *   `ScoreManager` 實時更新玩家分數並顯示於HUD。
+        *   `ParallaxScrollingComponent` 更新背景滾動。
+        *   `ParticleSystemComponent` 更新所有粒子效果。
+        *   `UIComponent` 更新遊戲HUD顯示。
+    *   `轉移 (Transitions)`:
+        *   玩家飛船的 `HealthComponent` 生命值歸零 -> 觸發狀態切換至 `GameOver` 狀態。
+        *   玩家按下暫停鍵 (例如 `ESC`) -> 觸發狀態切換至 `PauseMenu` 狀態。
 
-4.  **PlayGameState (遊戲進行狀態)**
-    *   **進入**:
-        *   **初始化遊戲數據**:
-            *   `CurrentInning = 1`, `IsTopHalf = True` (1局上半)。
-            *   `HomeScore = 0`, `AwayScore = 0`。
-            *   `Balls = 0`, `Strikes = 0`, `Outs = 0`。
-            *   `RunnersOnBase` 清空，所有壘包無跑者。
-            *   根據 `GameLobbyState` 的選擇，設定玩家當前角色 (`GameMode`)。
-        *   **場景與UI載入**:
-            *   `SpriteRenderer` 載入棒球場景背景、球員精靈。
-            *   `UISystem` 初始化並渲染實時記分板、好壞球/出局數顯示、壘上跑者狀態指示。
-        *   **AIManager 準備**: 依據玩家角色，初始化 AI 投手或 AI 打者。
-    *   **核心循環 (Main Game Loop)**: 此狀態將執行遊戲的實時邏輯。
-        *   **局數循環 (Inning Loop)**: 從第1局開始，直到比賽結束條件達成。
-            *   **上半局 (Top Half of Inning)**:
-                *   設定攻守雙方：玩家當前扮演打者，AI 扮演投手。
-                *   **打席循環 (At-Bat Loop)**: 從0好0壞0出局開始，直到打者出局或上壘。
-                    *   `AIManager` 控制 AI 投手：根據策略選擇球種 (`PitchType`) 和投球目標區域 (`PitchTargetArea`)。
-                    *   `PhysicsComponent` 模擬棒球的飛行軌跡，從投手丘飛向本壘板。
-                    *   玩家通過 `InputManager` 判斷來球時機，按下揮棒按鈕。
-                    *   `CollisionManager` 檢測球棒與棒球的碰撞。
-                    *   **結果判定 (Outcome Adjudication)**:
-                        *   **空振 / 未揮棒且好球區**: `Strikes` +1。
-                        *   **空振 / 未揮棒且壞球區**: `Balls` +1。
-                        *   **界外球 (Foul Ball)**: `Strikes` +1 (但若已2好球則不追加好球數)。
-                        *   **擊中球 (Hit Ball)**:
-                            *   `PhysicsComponent` 計算擊球後的棒球飛行軌跡。
-                            *   `AIManager` 控制 AI 守備員進行移動和接殺判斷。
-                            *   根據球落地位置、球速、守備員反應：
-                                *   **飛球接殺**: 打者出局 (`Outs` +1)。
-                                *   **滾地球**: `AIManager` 判斷傳球與封殺、觸殺。
-                                *   **安打**: 根據球落地位置和守備結果，判定為一壘安打、二壘安打、三壘安打。
-                                *   **全壘打 (Home Run)**: 球飛出全壘打牆外，所有壘上跑者及打者安全回本壘得分。
-                    *   **規則處理 (`EventManager` 監聽與觸發)**:
-                        *   **三振**: 3 個好球 -> 打者出局 (`Outs` +1)。
-                        *   **四壞球**: 4 個壞球 -> 打者保送上一壘。
-                        *   **死球**: 觸身球等 -> 打者保送上一壘。
-                        *   **出局**: 飛球接殺、觸殺、封殺 -> `Outs` +1。
-                        *   **得分**: 跑者安全回到本壘 -> `AwayScore` +1。
-                        *   **壘包更新**: 根據擊球結果和跑者行動，`RunnersOnBase` 狀態更新。
-                *   **上半局結束**: 當 `Outs` 達到 3 個時，重置 `Balls = 0`, `Strikes = 0`，清空壘包，切換 `IsTopHalf = False`，進入下半局。
-            *   **下半局 (Bottom Half of Inning)**:
-                *   設定攻守雙方：玩家當前扮演投手，AI 扮演打者。
-                *   **打席循環 (At-Bat Loop)**: 從0好0壞0出局開始，直到打者出局或上壘。
-                    *   玩家通過 `InputManager` 選擇球種和投球目標區域，執行投球。
-                    *   `PhysicsComponent` 模擬棒球的飛行軌跡。
-                    *   `AIManager` 控制 AI 打者判斷來球時機並揮棒。
-                    *   `CollisionManager` 檢測球棒與棒球的碰撞。
-                    *   **結果判定 (Outcome Adjudication)**: 同上半局。
-                    *   **規則處理 (`EventManager` 監聽與觸發)**: 同上半局，得分則 `HomeScore` +1。
-                *   **下半局結束**: 當 `Outs` 達到 3 個時，重置 `Balls = 0`, `Strikes = 0`，清空壘包，切換 `IsTopHalf = True`，進入下一局。
-            *   **局間處理**: `UISystem` 更新記分板，清理場地，準備進入下一局。
-        *   **比賽結束判定**:
-            *   達到預設局數（如 9 局）且其中一方比分領先。
-            *   若 9 局結束比分平手，進入延長賽 (額外局數)。
-            *   若下半局結束時主隊領先，則無需進行剩餘打席（主隊獲勝）。
-            *   若觸發提前結束機制（如規定局數後分數差距過大，如七局結束領先十分）。
-    *   **事件觸發/離開**:
-        *   比賽結束條件達成 -> 切換至 `GameOverState`。
-        *   玩家點擊暫停或退出 -> 可切換至 `PauseMenuState` 或 `MainMenuState`。
+*   **PauseMenu (暫停菜單):**
+    *   `進入 (Entry)`:
+        *   遊戲主循環暫停更新（或僅更新UI），遊戲畫面凍結。
+        *   `AudioMixer` 暫停遊戲背景音樂。
+        *   `UIComponent` 渲染暫停菜單，顯示"繼續遊戲"、"設定"、"返回主菜單"等選項。
+    *   `行為 (Behavior)`:
+        *   `PlayerInputComponent` 接收玩家輸入，`UIComponent` 處理菜單選項的導航和選擇。
+    *   `轉移 (Transitions)`:
+        *   玩家選擇"繼續遊戲" -> 觸發狀態切換回 `Gameplay` 狀態，`AudioMixer` 恢復播放遊戲音樂。
+        *   玩家選擇"設定" -> 觸發狀態切換至 `Options` 狀態 (遊戲內設定)。
+        *   玩家選擇"返回主菜單" -> 觸發狀態切換至 `MainMenu` 狀態 (清除當前遊戲進度)。
 
-5.  **GameOverState (遊戲結束狀態)**
-    *   **進入**: 顯示最終比分、比賽勝負結果、以及其他統計數據（如 MVP、安打數、三振數）。
-    *   **更新**: 偵測玩家輸入。
-    *   **事件觸發/離開**:
-        *   玩家點擊「返回主選單」按鈕 -> 切換至 `MainMenuState`。
-        *   玩家點擊「重新遊戲」按鈕 -> (可選) 切換至 `GameLobbyState`，開始新一局遊戲。
+*   **GameOver (遊戲結束):**
+    *   `進入 (Entry)`:
+        *   `AudioMixer` 停止遊戲音樂，播放遊戲結束音效。
+        *   `UIComponent` 渲染"遊戲結束"訊息、玩家最終得分，並提示輸入高分榜姓名。
+        *   `ScoreManager` 接收玩家輸入姓名並更新高分榜。
+    *   `行為 (Behavior)`:
+        *   `PlayerInputComponent` 接收玩家輸入，`UIComponent` 處理姓名輸入和菜單選項。
+        *   等待玩家選擇重新開始或返回主菜單。
+    *   `轉移 (Transitions)`:
+        *   玩家選擇"重新開始" -> 觸發狀態切換至 `Gameplay` 狀態 (初始化新遊戲)。
+        *   玩家選擇"返回主菜單" -> 觸發狀態切換至 `MainMenu` 狀態。
 
-## 4. Entities & Values
+**3.2 核心遊戲邏輯詳述**
 
-以下定義遊戲中主要實體及其關鍵屬性與預設數值，以提供系統開發的具體依據。
+*   **玩家控制 (`PlayerInputComponent`):** 監聽鍵盤 (W,A,S,D 或方向鍵進行移動, Space 鍵射擊) 或遊戲手把輸入。將這些輸入轉換為玩家飛船實體可直接處理的速度向量和射擊指令。
+*   **射擊系統 (`ShootingComponent`, `ObjectPool`):**
+    *   當玩家或敵機觸發射擊指令時，其所屬的 `ShootingComponent` 會被調用。
+    *   `ShootingComponent` 從 `ObjectPool` 中獲取一個預先創建的子彈實例，初始化其位置、速度、方向、傷害值和陣營（玩家/敵方）。
+    *   子彈被激活並加入遊戲實體列表，其 `update()` 方法將根據速度更新位置。
+    *   子彈飛出螢幕或與目標碰撞後，會被送回 `ObjectPool` 以供重用。
+*   **移動系統:** 所有遊戲實體（玩家、敵機、子彈、道具）都具備速度和方向向量。在每一幀的 `update()` 循環中，實體的位置會根據 `position += velocity * delta_time` 進行更新。
+*   **碰撞檢測與響應 (`SpatialGrid`, `HealthComponent`, `PowerUpSystem`, `ScoreManager`, `ParticleSystemComponent`, `AudioMixer`):**
+    *   每幀遊戲循環開始時，所有移動的實體都會在 `SpatialGrid` 中更新其網格位置。
+    *   **玩家-敵機/敵彈碰撞:** `SpatialGrid` 檢測到碰撞後，玩家飛船的 `HealthComponent` 將扣除生命值。若玩家處於無敵狀態（由 `PowerUpSystem` 賦予），則不扣除。每次受傷後，`HealthComponent` 會啟動短暫無敵計時器，並觸發 `ParticleSystemComponent` 閃爍特效。
+    *   **玩家子彈-敵機碰撞:** `SpatialGrid` 檢測到碰撞後，敵機的 `HealthComponent` 扣除生命值。若生命值歸零，該敵機將被標記為死亡，觸發 `ParticleSystemComponent` 生成爆炸特效，`AudioMixer` 播放爆炸音效，`ScoreManager` 增加玩家得分。`PowerUpSystem` 根據預設機率嘗試生成道具。
+    *   **玩家-道具碰撞:** `SpatialGrid` 檢測到碰撞後，該道具會被標記為已收集。`PowerUpSystem` 接收道具類型並在玩家實體上應用效果，`AudioMixer` 播放收集音效。
+*   **敵機生成與行為 (`WaveManager`, `StateMachineComponent`, `ShootingComponent`):**
+    *   `WaveManager` 定義遊戲的進程，在指定時間或條件下生成新的敵機波次或Boss。
+    *   每種敵機實體內部都包含一個 `StateMachineComponent`，根據當前狀態（如"巡邏"、"攻擊"、"躲避"）執行對應的移動模式和攻擊行為。
+    *   攻擊行為透過調用敵機的 `ShootingComponent` 來實現，發射特定類型和頻率的子彈。
+*   **Boss戰 (`WaveManager`, `StateMachineComponent`, `HealthComponent`):**
+    *   `WaveManager` 在特定遊戲進度點觸發Boss生成。
+    *   Boss具有更高的生命值 (`HealthComponent`) 和複雜的 `StateMachineComponent`，可能包含多個攻擊階段。每個階段會有獨特的移動模式、攻擊類型和頻率。
+    *   Boss的死亡會觸發高額分數獎勵和必定的火力強化道具掉落。
+*   **分數系統 (`ScoreManager`):**
+    *   `ScoreManager` 負責累計玩家在遊戲中獲得的分數。
+    *   摧毀不同類型的敵機和Boss會給予不同的分數獎勵。
+    *   收集特定道具（如分數加成）也會增加分數。
+    *   遊戲結束時，`ScoreManager` 會處理高分榜的邏輯。
+*   **生命與護盾 (`HealthComponent`, `PowerUpSystem`):**
+    *   玩家和敵機的生命值由 `HealthComponent` 管理。
+    *   護盾是一種特殊的狀態，由 `PowerUpSystem` 激活。在護盾持續期間，玩家飛船將處於無敵狀態，抵擋所有傷害，並有視覺特效（例如藍色光罩）。
+*   **道具效果 (`PowerUpSystem`):**
+    *   **火力強化:** `PowerUpSystem` 收到火力強化道具後，會增加玩家飛船的武器等級。不同等級對應不同的子彈數量、射擊頻率或子彈特性（如貫穿）。
+    *   **護盾:** `PowerUpSystem` 激活玩家飛船的護盾狀態，設置持續時間。
+    *   **額外生命:** `PowerUpSystem` 調用玩家飛船的 `HealthComponent` 進行生命值恢復。
+*   **背景滾動 (`ParallaxScrollingComponent`):**
+    *   `ParallaxScrollingComponent` 管理多個背景圖像層。
+    *   每層圖像會以不同的垂直速度（基於遊戲主速度和層次係數）進行滾動更新。當背景層滾出螢幕頂部時，會被重新定位到底部以形成無限滾動的效果。
 
-*   **Player (玩家角色 - 可扮演投手或打者)**
-    *   `Role`: `Enum` (`BATTER`, `PITCHER`) - 當前玩家扮演的角色。
-    *   `Stamina`: `float` (初始值 `100.0`, 範圍 `0.0 - 100.0`) - 體力值，影響投球力量、控球穩定性及打擊精準度，隨遊戲進行消耗。
-    *   `FatigueEffect`: `float` (範圍 `0.0 - 1.0`, `0.0`為無疲勞) - 疲勞係數，根據 `Stamina` 計算，作為其他基礎能力值的乘數。
-    *   `CurrentAnimationState`: `Enum` (`IDLE`, `WINDUP`, `PITCHING`, `SWINGING`, `RUNNING`, `FIELDING`, `CELEBRATING`) - `AnimationSystem` 用於播放正確動畫。
-    *   `Team`: `Enum` (`HOME`, `AWAY`) - 所屬隊伍。
-    *   `Position`: `Vector2` - 球員在場上的坐標。
-    *   `RunningSpeedBase`: `float` = `200.0` (像素/秒) - 跑壘基礎速度。
+### 4. Entities & Values
 
-    *   **投手角色獨有屬性**:
-        *   `PitchingPower`: `float` (範圍 `0.0 - 1.0`) - 影響投球速度和球的尾勁，與 `FastballSpeedBase` 相乘。
-        *   `PitchingAccuracy`: `float` (範圍 `0.0 - 1.0`) - 影響投球命中目標區域的精準度，越高投球誤差越小。
-        *   `FastballSpeedBase`: `float` = `300.0` (像素/秒) - 快速球基礎初速度。
-        *   `CurveballBreak`: `float` = `0.8` (彎曲幅度係數) - 變化球的垂直與水平變化幅度強度。
-        *   `SliderMovement`: `float` = `0.6` (位移係數) - 滑球的橫向位移效果強度。
-        *   `ChangeupDeception`: `float` = `0.7` (欺騙性係數) - 變速球與快速球的速度差異程度，影響打者判斷。
-        *   `PitchRateLimit`: `float` = `0.8` (秒) - 每次投球的最小時間間隔，防止玩家過快操作。
-        *   `AvailablePitches`: `List<Enum(FASTBALL, CURVEBALL, SLIDER, CHANGEUP, etc.)>` - 投手可用的球種列表。
+以下為遊戲中主要實體的關鍵數值定義：
 
-    *   **打者角色獨有屬性**:
-        *   `BattingPower`: `float` (範圍 `0.0 - 1.0`) - 影響擊球後的初速度和飛行距離，與 `Baseball` 的 `InitialVelocity` 計算相關。
-        *   `BattingTimingWindow`: `float` = `0.15` (秒) - 玩家/AI判斷完美擊中球的有效時間窗口。
-        *   `ContactAbility`: `float` (範圍 `0.0 - 1.0`) - 影響擊中球的判定範圍與容錯率，越高則擊中判定更寬鬆。
-        *   `EyeSight`: `float` (範圍 `0.0 - 1.0`) - 判斷好壞球的精準度，影響 AI 打者或玩家的建議提示。
+**4.1 玩家飛船 (Player Ship)**
 
-*   **Baseball (棒球)**
-    *   `Position`: `Vector2` (x, y) - 球的當前世界坐標。
-    *   `Velocity`: `Vector2` (vx, vy) - 球的當前速度向量 (像素/秒)。
-    *   `Acceleration`: `Vector2` (ax, ay) - 球的當前加速度向量 (像素/秒²)，受重力、空氣阻力、旋轉力影響。
-    *   `Radius`: `float` = `10.0` (像素) - 球的碰撞半徑，用於 `CollisionManager`。
-    *   `Mass`: `float` = `0.145` (公斤) - 球的質量，用於 `PhysicsComponent` 的物理計算。
-    *   `SpinMagnitude`: `float` - 球的旋轉強度，影響 `PhysicsComponent` 的馬格努斯效應計算，決定變化球軌跡。
-    *   `Type`: `Enum` (`FASTBALL`, `CURVEBALL`, `SLIDER`, `CHANGEUP`, `SINKER`, etc.) - 當前球的球種。
-    *   `State`: `Enum` (`IN_FLIGHT`, `GROUNDED`, `CAUGHT`, `FOUL`, `STRIKE_ZONE`, `BALL_ZONE`, `HOME_RUN`) - 球的生命週期狀態，用於 `StateMachine`。
-    *   `InitialVelocity`: `Vector2` - 投出時的初始速度。
-    *   `GravityEffect`: `float` = `9.8` (像素/秒²) - 模擬重力加速度。
-    *   `AirResistanceCoefficient`: `float` = `0.0001` - 空氣阻力係數。
+*   **初始生命值 (Health):** 3 點 (`HealthComponent` 初始化值)
+*   **移動速度 (Speed):** 300 像素/秒 (pixels/second)
+*   **初始火力等級 (Initial Weapon Level):** 1 (單發子彈) (`PowerUpSystem` 初始值)
+*   **基礎射擊頻率 (Base Fire Rate):** 0.2 秒/發 (即每秒可發射 5 發子彈) (`ShootingComponent` 基礎參數)
+*   **無敵時間 (Invulnerability Duration after damage):** 1.5 秒 (玩家受傷後的閃爍無敵時長，由 `HealthComponent` 管理)
+*   **護盾持續時間 (Shield Duration):** 5 秒 (當收集護盾道具時，由 `PowerUpSystem` 管理)
+*   **碰撞體積 (Collider Size):** 約 32x32 像素 (具體尺寸基於美術資源，用於 `SpatialGrid` 判斷)
 
-*   **Game State (遊戲全局狀態)**
-    *   `CurrentInning`: `int` (範圍 `1-9` 或更高) - 當前比賽局數。
-    *   `IsTopHalf`: `bool` - `True` 為上半局，`False` 為下半局。
-    *   `HomeScore`: `int` - 主隊得分。
-    *   `AwayScore`: `int` - 客隊得分。
-    *   `Balls`: `int` (範圍 `0-3`) - 當前打席壞球數。
-    *   `Strikes`: `int` (範圍 `0-2`) - 當前打席好球數。
-    *   `Outs`: `int` (範圍 `0-2`) - 當前半局出局數。
-    *   `RunnersOnBase`: `Dictionary<BaseEnum, PlayerID or None>` (Key: `FIRST`, `SECOND`, `THIRD`) - 壘上跑者狀態，`None` 表示無人。
-    *   `CurrentBatterID`: `int` - 當前打席的打者ID。
-    *   `CurrentPitcherID`: `int` - 當前投手的ID。
-    *   `PitchTargetArea`: `Rect` - 玩家/AI選擇的投球目標區域（屏幕坐標），用於視覺回饋和精準度判斷。
-    *   `GameMode`: `Enum` (`PITCHING_MODE`, `BATTING_MODE`) - 玩家當前扮演的模式。
-    *   `GameDuration`: `int` (預設 `9` 局) - 設定的遊戲總局數。
-    *   `IsGameOver`: `bool` - 標誌遊戲是否結束。
+**4.2 敵機 (Enemies)**
 
-*   **UI Elements (介面元素數據)**
-    *   `ScoreboardData`: `{ 'HomeScore': int, 'AwayScore': int, 'Inning': int, 'IsTopHalf': bool }` - 記分板顯示數據。
-    *   `CountDisplayData`: `{ 'Balls': int, 'Strikes': int, 'Outs': int }` - 好壞球/出局數顯示數據。
-    *   `RunnerDisplayData`: `{ 'FirstBaseOccupied': bool, 'SecondBaseOccupied': bool, 'ThirdBaseOccupied': bool }` - 壘上跑者顯示數據。
-    *   `PitchSelectionUI`: 儲存可選擇的球種列表及其圖標/文字，用於玩家投球選擇介面。
-    *   `PitchTargetUI`: 用於在屏幕上繪製投球目標區域的視覺標示，提供玩家瞄準反饋。
-    *   `SwingTimingIndicator`: `float` (範圍 `0.0 - 1.0`) - 打擊時機指示器的當前進度。
+*   **基礎雜兵 (Basic Fighter):**
+    *   **生命值 (Health):** 1 點
+    *   **速度 (Speed):** 150 像素/秒
+    *   **得分 (Score):** 10 (`ScoreManager` 記錄)
+    *   **射擊頻率 (Fire Rate):** 1.0 秒/發
+    *   **子彈類型:** 普通單發子彈
+    *   **行為 (`StateMachineComponent`):** 直線向下飛行，進入螢幕範圍後定時射擊。
+*   **重型轟炸機 (Heavy Bomber):**
+    *   **生命值 (Health):** 3 點
+    *   **速度 (Speed):** 100 像素/秒
+    *   **得分 (Score):** 50
+    *   **射擊頻率 (Fire Rate):** 2.0 秒/發
+    *   **子彈類型:** 三向散射子彈
+    *   **行為 (`StateMachineComponent`):** 緩慢向下飛行，可能帶有輕微左右搖擺，定時發射散射彈幕。
+*   **追蹤者 (Chaser):**
+    *   **生命值 (Health):** 2 點
+    *   **速度 (Speed):** 180 像素/秒 (初始), 250 像素/秒 (鎖定玩家時加速)
+    *   **得分 (Score):** 25
+    *   **行為 (`StateMachineComponent`):** 從螢幕邊緣進入，一段時間後鎖定玩家位置並加速追蹤，不發射子彈，主要通過碰撞造成傷害。
+*   **Boss 1 (巨型巡洋艦):**
+    *   **生命值 (Health):** 50 點
+    *   **速度 (Speed):** 50-80 像素/秒 (依 `StateMachineComponent` 階段變動，通常在螢幕頂部小範圍移動)
+    *   **得分 (Score):** 500
+    *   **攻擊模式 (`StateMachineComponent` 階段管理):**
+        *   **階段1 (HP > 50%):** 廣域散射彈幕 (Fire Rate: 0.5 秒/波, 每波 5-7 發子彈, 彈道隨機微調)。
+        *   **階段2 (HP <= 50%):** 停止散射彈幕，切換為追蹤雷射 (Laser Fire Rate: 3.0 秒/次，雷射持續 1.0 秒，對玩家造成持續傷害)。Boss會停止移動並鎖定玩家位置發射雷射。
+    *   **掉落 (`PowerUpSystem`):** 必定掉落一個火力強化道具。
+
+**4.3 子彈 (Bullets)**
+
+*   **玩家子彈 (Player Bullet):**
+    *   **速度 (Speed):** 600 像素/秒 (向上飛行)
+    *   **傷害 (Damage):** 1 點
+    *   **生命週期:** 飛出螢幕或碰撞後回收 (`ObjectPool`)
+*   **敵方普通子彈 (Enemy Normal Bullet):**
+    *   **速度 (Speed):** 400 像素/秒 (向下飛行)
+    *   **傷害 (Damage):** 1 點
+    *   **生命週期:** 飛出螢幕或碰撞後回收 (`ObjectPool`)
+*   **敵方散射子彈 (Enemy Spread Bullet):**
+    *   **速度 (Speed):** 350 像素/秒 (向下散開)
+    *   **傷害 (Damage):** 1 點
+    *   **生命週期:** 飛出螢幕或碰撞後回收 (`ObjectPool`)
+*   **敵方雷射 (Enemy Laser):**
+    *   **速度 (Speed):** 即時判定 (或極高速度，可視為瞬發)，雷射體本身在原地或隨Boss移動。
+    *   **傷害 (Damage):** 1 點/幀 (對位於雷射碰撞範圍內的玩家造成持續傷害)
+    *   **生命週期:** 由Boss的 `StateMachineComponent` 控制持續時間。
+
+**4.4 掉落道具 (Power-ups) - 由 `PowerUpSystem` 管理**
+
+*   **火力強化 (Firepower Upgrade):**
+    *   **效果:** 提升玩家武器等級1級。
+    *   **等級效果示例 (由 `ShootingComponent` 根據等級調整):**
+        *   Lv1 (基礎): 單發子彈。
+        *   Lv2: 雙發子彈 (左右各一發)。
+        *   Lv3: 三向散射子彈 (中央一發，左右各斜向一發)。
+        *   Lv4: 貫穿子彈 (可穿透多個敵人，傷害不遞減)。
+*   **護盾 (Shield):**
+    *   **效果:** 玩家獲得 5 秒無敵狀態 (視覺上呈現光罩)。
+*   **額外生命 (Extra Life):**
+    *   **效果:** 玩家生命值 +1 (不會超過最大生命上限，如有)。
+*   **分數加成 (Score Boost):**
+    *   **效果:** 立即獲得額外 100 分。
+
+**4.5 遊戲數值 (Game Values)**
+
+*   **螢幕解析度 (Screen Resolution):** 800x600 像素 (`pygame` 窗口設置)
+*   **幀率上限 (Max Frame Rate):** 60 FPS (`pygame.time.Clock` 控制)
+*   **背景基礎滾動速度 (Base Background Scroll Speed):** 50 像素/秒 (`ParallaxScrollingComponent` 基礎參數)
+*   **敵機波次間隔 (Wave Interval):** 10 秒 (`WaveManager` 控制，每波敵機結束後等待時間)
+*   **Boss生成間隔 (Boss Spawn Interval):** 每 3 個常規敵機波次後出現一次Boss (`WaveManager` 控制)
+*   **遊戲開始生命值 (Starting Lives):** 3 (`HealthComponent` 初始化)
 
 ---
+
+這份企劃書旨在提供一個清晰且可操作的技術藍圖，將使用者需求轉化為可執行且基於現有模組的具體開發方案。後續開發階段將依據此文件進行模組的實作、整合與細節調整。所有提到的模組和邏輯都應在 `pygame` 環境下進行實現和驗證。
