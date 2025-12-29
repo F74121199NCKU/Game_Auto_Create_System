@@ -4,6 +4,7 @@ Reference_modules裡存放的是給RAG搜索的檔案 可自行增加、刪減
 chroma_db是向量庫 執行build_db.py後就能夠產生了
 
 # 📂 檔案結構樹 (Project Tree)
+```
 Project/
 │
 ├── 📂 __pycache__/            # 存放 Python 編譯後的快取檔 (系統自動生成)
@@ -32,3 +33,4 @@ Project/
 ├── 🐍 config.py               # [設定] 全域參數配置
 ├── 🐍 utils.py                # [工具] 通用的小工具函式
 └── 🐍 build_db.py             # [建置] 將參考檔案寫入資料庫的腳本
+```
