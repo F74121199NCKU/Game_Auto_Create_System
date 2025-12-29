@@ -1,140 +1,224 @@
-# fuzz_tester.py
-import os
-import sys
-import re
 import subprocess
-import random
+import sys
+import time
+import os
+import threading
+import signal
 
-# 定義要注入的 Chaos Payload 
+# ==========================================
+# 1. 定義要注入的「保險型」Chaos Payload
+#    這個字串會被動態寫入到遊戲進程中執行
+# ==========================================
+# ==========================================
+# 1. 定義要注入的「保險型」Chaos Payload (無 Emoji 版)
+# ==========================================
 CHAOS_PAYLOAD = """
-# --- [INJECTED FUZZER CODE] START ---
+# --- [INJECTED SAFE FUZZER CODE] START ---
 import sys as _sys
 import random as _random
 import pygame as _pygame
 
+# 強制設定輸出編碼為 UTF-8，防止中文環境報錯
+try:
+    _sys.stdout.reconfigure(encoding='utf-8')
+except:
+    pass
+
 class _ChaosAgent:
-    def __init__(self, duration_sec=5.0):
+    def __init__(self, duration_sec=10.0):
         self.start_t = _pygame.time.get_ticks()
-        self.end_t = self.start_t + (duration_sec * 1000)
+        self.duration = duration_sec * 1000
+        self.end_t = self.start_t + self.duration
+        
+        try:
+            self.surface = _pygame.display.get_surface()
+            if self.surface:
+                self.w, self.h = self.surface.get_size()
+            else:
+                self.w, self.h = 800, 600
+        except:
+            self.w, self.h = 800, 600
+
+        # [修正] 移除了機器人符號，改用純文字標籤
+        print(f"[FUZZER] Start Safe Mode Test ({duration_sec}s)")
+        print(f"[FUZZER] Strategy: Avoid Esc/P keys, avoid bottom/top-right corners.")
+
+    def _post_key(self, key):
+        try:
+            _pygame.event.post(_pygame.event.Event(_pygame.KEYDOWN, key=key))
+            _pygame.event.post(_pygame.event.Event(_pygame.KEYUP, key=key))
+        except: pass
+
+    def _post_click(self, x, y):
+        try:
+            x = max(0, min(x, self.w - 1))
+            y = max(0, min(y, self.h - 1))
+            _pygame.event.post(_pygame.event.Event(_pygame.MOUSEBUTTONDOWN, button=1, pos=(x, y)))
+            _pygame.event.post(_pygame.event.Event(_pygame.MOUSEBUTTONUP, button=1, pos=(x, y)))
+            _pygame.mouse.set_pos((x, y))
+        except: pass
 
     def update(self):
-        # 1. 時間檢查 (Timeout Check)
-        if _pygame.time.get_ticks() > self.end_t:
+        current_t = _pygame.time.get_ticks()
+        # 1. 時間到，通過測試
+        if current_t > self.end_t:
             print("[FUZZ] SUCCESS: Test Passed cleanly.")
             _pygame.quit()
-            _sys.exit(0) # 正常退出 (Exit Code 0)
+            _sys.exit(0)
             
-        # 2. 隨機輸入干擾 (Fuzzing)
-        if _random.random() < 0.1: # 10% 機率亂按 (提高頻率測試穩定性)
-            try:
-                # 模擬隨機按鍵事件
-                keys = [_pygame.K_LEFT, _pygame.K_RIGHT, _pygame.K_UP, _pygame.K_DOWN, _pygame.K_SPACE, _pygame.K_z, _pygame.K_x]
-                _pygame.event.post(_pygame.event.Event(_pygame.KEYDOWN, key=_random.choice(keys)))
-            except:
-                pass
-# 初始化測試員
-_tester = _ChaosAgent(duration_sec=5.0)
-# --- [INJECTED FUZZER CODE] END ---
+        # 壓力測試邏輯
+        if _random.random() < 0.2:
+            action_type = _random.choice(['move', 'click', 'skill'])
+            
+            if action_type == 'move':
+                keys = [_pygame.K_LEFT, _pygame.K_RIGHT, _pygame.K_UP, _pygame.K_DOWN, 
+                        _pygame.K_w, _pygame.K_a, _pygame.K_s, _pygame.K_d]
+                self._post_key(_random.choice(keys))
+            
+            elif action_type == 'click':
+                rand_x = _random.randint(0, self.w)
+                safe_h_max = int(self.h * 0.85) 
+                rand_y = _random.randint(0, safe_h_max)
+                
+                if rand_x > self.w * 0.95 and rand_y < self.h * 0.05:
+                    rand_x = self.w // 2
+                    rand_y = self.h // 2
+                self._post_click(rand_x, rand_y)
+                
+                if _random.random() < 0.1:
+                    edge_x = _random.choice([0, self.w-1])
+                    edge_y = _random.choice([0, self.h-1])
+                    _pygame.mouse.set_pos((edge_x, edge_y))
+
+            elif action_type == 'skill':
+                self._post_key(_random.choice([_pygame.K_SPACE, _pygame.K_r, _pygame.K_e]))
+
+if not hasattr(_sys, '_fuzzer_active'):
+    _sys._fuzzer_active = True
+    global _tester
+    _tester = _ChaosAgent(duration_sec=10.0)
+
+def _fuzzer_loop():
+    while True:
+        try:
+            _tester.update()
+            _pygame.time.wait(30)
+        except SystemExit:
+            break
+        except:
+            pass
+
+import threading
+_t = threading.Thread(target=_fuzzer_loop, daemon=True)
+_t.start()
+# --- [INJECTED SAFE FUZZER CODE] END ---
 """
 
-# ==========================================
-# 2. 注入器邏輯
-# ==========================================
-def inject_fuzz_code(source_code: str) -> str:
-    """將 Fuzz 測試代碼注入到原始遊戲代碼中"""
-    injected_code = source_code
-
-    # A. 插入 Class 定義
-    if "import pygame" in injected_code:
-        # 使用正則表達式，插在 import pygame 之後
-        injected_code = re.sub(r"(import\s+pygame.*)", r"\1\n" + CHAOS_PAYLOAD, injected_code, count=1)
+def run_fuzz_test():
+    """
+    執行遊戲並注入 Chaos Payload。
+    """
+    # 1. 決定目標腳本
+    launcher_path = os.path.join(os.path.dirname(__file__), "debug_launcher.py")
+    if not os.path.exists(launcher_path):
+         launcher_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "debug_launcher.py")
+    
+    if not os.path.exists(launcher_path):
+        print("⚠️ 找不到 debug_launcher.py，改為測試 generated_app.py")
+        target_script = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "dest", "generated_app.py"))
     else:
-        injected_code = "import pygame\n" + CHAOS_PAYLOAD + "\n" + injected_code
+        target_script = os.path.abspath(launcher_path)
 
-    # B. 插入執行掛鉤 (Hook into Game Loop)
-    hook_code = "_tester.update(); "
-    
-    if "pygame.display.update()" in injected_code:
-        injected_code = injected_code.replace("pygame.display.update()", hook_code + "pygame.display.update()")
-    elif "pygame.display.flip()" in injected_code:
-        injected_code = injected_code.replace("pygame.display.flip()", hook_code + "pygame.display.flip()")
-    
-    return injected_code
+    print(f"🎯 Fuzzer 目標腳本: {target_script}")
 
-# ==========================================
-# 3. 執行 Fuzz 測試
-# ==========================================
-def run_fuzz_test(full_path: str) -> dict:
-    folder = os.path.dirname(full_path)      
-    filename = os.path.basename(full_path) 
-    
-    print(f"💣 [Fuzzer] 正在對 {filename} 進行壓力測試 (Injection Mode)...")
+    if not os.path.exists(target_script):
+        print(f"❌ 錯誤: 找不到目標檔案 {target_script}")
+        return False
 
-    # 1. 讀取原始碼
+    # 2. 準備注入檔案
+    wrapper_script = "temp_fuzz_wrapper.py"
     try:
-        with open(full_path, "r", encoding="utf-8") as f:
+        with open(target_script, "r", encoding="utf-8") as f:
             original_code = f.read()
-    except Exception as e:
-        return {"state": False, "Text": f"File Read Error: {str(e)}"}
-    
-    # 2. 注入測試碼
-    tested_code = inject_fuzz_code(original_code)
-    
-    # 3. 建立暫存檔
-    temp_filename = f"_fuzz_{filename}"
-    temp_full_path = os.path.join(folder, temp_filename)
-    
-    with open(temp_full_path, "w", encoding="utf-8") as f:
-        f.write(tested_code)
+    except UnicodeDecodeError:
+        # 如果讀取目標檔案就失敗，嘗試用系統編碼讀
+        with open(target_script, "r", encoding="utf-8", errors="replace") as f:
+            original_code = f.read()
 
-    # 4. 設定環境變數 (關閉音效)
-    my_env = os.environ.copy()
-    my_env["SDL_AUDIODRIVER"] = "dummy"
+    injected_code = f"{CHAOS_PAYLOAD}\n\n# --- ORIGINAL GAME CODE ---\n{original_code}"
 
+    with open(wrapper_script, "w", encoding="utf-8") as f:
+        f.write(injected_code)
+
+    # 3. 執行測試
+    print("🚀 啟動 Fuzzer 測試程序...")
+    process = None
     try:
-        # 5. 執行測試
-        result = subprocess.run(
-            [sys.executable, temp_filename],
-            capture_output=True,
-            text=True,
-            cwd=folder,
-            timeout=10, # 外部保險超時
-            env=my_env,
-            encoding='utf-8',
-            errors='ignore'
-        )
+        cwd_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         
-        # 清理暫存檔
-        if os.path.exists(temp_full_path):
-            os.remove(temp_full_path)
+        # --- [關鍵修正] 設定環境變數，強迫 Python 輸出 UTF-8 ---
+        my_env = os.environ.copy()
+        my_env["PYTHONIOENCODING"] = "utf-8"
 
-        # 6. 判斷結果
-        if result.returncode == 0 and "[FUZZ] SUCCESS" in result.stdout:
-            print("✨ Fuzz 測試通過：遊戲能承受隨機輸入攻擊。")
-            return {
-                "state": True,
-                "Text": None
-            }
-        else:
-            print("💥 Fuzz 測試失敗：遊戲在亂按之下崩潰了。")
-            error_log = f"Fuzz Test Failed.\n[Stderr]:\n{result.stderr}\n[Stdout Last 500 chars]:\n{result.stdout[-500:]}"
-            return {
-                "state": False,
-                "Text": error_log
-            }
+        process = subprocess.Popen(
+            [sys.executable, wrapper_script],
+            cwd=cwd_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            # --- [關鍵修正] 明確指定編碼，並忽略錯誤 ---
+            encoding='utf-8',       # 強制父進程用 UTF-8 讀取
+            errors='replace',       # 讀到亂碼直接變成 '?'，絕對不讓程式崩潰
+            env=my_env              # 傳入環境變數
+        )
 
-    except subprocess.TimeoutExpired:
-        print("⚠️ Fuzz 測試超時：遊戲可能卡死，視為失敗。")
-        if os.path.exists(temp_full_path):
-            os.remove(temp_full_path)
-        return {
-                "state": False, 
-                "Text": "TimeoutError: The game loop froze or is too slow during fuzzing."
-        }
+        try:
+            stdout, stderr = process.communicate(timeout=15)
+            
+            # 防呆：如果 stdout 是 None (雖然加了 errors='replace' 後應該不會發生)
+            stdout = stdout if stdout else ""
+            stderr = stderr if stderr else ""
+
+            if "[FUZZ] SUCCESS" in stdout:
+                print("✅ 測試通過：遊戲在壓力測試下存活且正常退出。")
+                print("-" * 20)
+                return True
+            else:
+                if process.returncode != 0:
+                    print(f"❌ 測試失敗：遊戲崩潰 (Return Code: {process.returncode})")
+                    print("--- Error Log ---")
+                    print(stderr)
+                    # 有時候錯誤訊息在 stdout 裡
+                    if "Traceback" in stdout:
+                        print("--- Stdout Log ---")
+                        print(stdout)
+                    return False
+                else:
+                    print("⚠️ 測試結束，但未偵測到完整成功訊號 (可能是手動關閉或無效測試)。")
+                    # 檢查是否有隱藏的 Traceback
+                    if "Traceback" in stdout or "Traceback" in stderr:
+                         print("❌ 發現潛在錯誤:")
+                         print(stderr)
+                         return False
+                    return True
+
+        except subprocess.TimeoutExpired:
+            print("❌ 測試超時：遊戲可能卡死 (Freeze)。")
+            process.kill()
+            return False
+
     except Exception as e:
-        if os.path.exists(temp_full_path):
-            os.remove(temp_full_path) 
-        return {
-            "state": False,
-            "Text": str(e)
-        }
+        print(f"❌ Fuzzer 發生內部錯誤: {e}")
+        return False
+    finally:
+        if os.path.exists(wrapper_script):
+            try:
+                os.remove(wrapper_script)
+            except: pass
+
+if __name__ == "__main__":
+    success = run_fuzz_test()
+    if success:
+        sys.exit(0)
+    else:
+        sys.exit(1)

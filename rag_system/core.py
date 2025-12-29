@@ -16,7 +16,8 @@ def select_relevant_modules(user_query: str) -> str:
     """
     第一階段：讀取 catalog.json，讓 LLM 挑選模組。
     """
-    catalog_path = "catalog.json"
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    catalog_path = os.path.join(current_dir, "catalog.json")
     
     # 1. 讀取型錄 (如果沒有檔案，就嘗試即時生成或是報錯)
     if not os.path.exists(catalog_path):

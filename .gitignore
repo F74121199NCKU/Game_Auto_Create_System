@@ -6,3 +6,5 @@ dest/
 test/
 __pycache__/
 Games/
+Graphic/
+Sound/

@@ -103,6 +103,14 @@ def generate_py(user_prompt) -> str:
         "你的任務是根據「使用者需求」與「現有的參考程式碼 (Reference Code)」，規劃一份技術企劃書。"
         f"\n\n【現有參考程式碼 (Reference Modules)】\n{rag_context}\n\n"
         
+        "【企劃書輸出要求】"
+        "1. **Technical Architecture**: 明確指出要使用哪些 Reference Modules。"
+        "2. **Game Rules**: 描述遊戲流程，**必須包含失敗條件 (Game Over) 與勝利條件**。"
+        "3. **Game Menu**: 提供遊戲選單其中需要包含開始、結束、規則說明、重新開始等，其餘則依要求新增"
+        "4. **Controls**: 定義按鍵操作，**必須包含 'P' 鍵或 'ESC' 鍵作為暫停功能**, 暫停後必須顯示遊戲選單(Game Menu), "
+        "   遊戲結束時除了使用者要求以外還需要加上重新開始，讓玩家能夠重新開始遊玩。" 
+        "5. **Entities**: 定義數值 (如玩家血量、敵人傷害)。"
+
         "【輸出格式規範 - 嚴格遵守】"
         "1. **必須輸出純 JSON 格式**。"
         "2. **嚴禁**包含 Markdown 標記 (如 ```json ... ```)，請直接輸出 JSON 字串，以便程式解析。"
@@ -171,7 +179,7 @@ def generate_py(user_prompt) -> str:
         "2. 使用 `pygame.math.Vector2` 處理座標。"
         "3. 確保包含 `if __name__ == '__main__':`。"
         "4. 不要輸出 Markdown 標記。"
-        
+
         "【輸入資料說明】"
         "你將收到一份 JSON 格式的企劃書，請解析其中的 `technical_architecture` 與 `game_rules` 來撰寫程式碼。"
     )

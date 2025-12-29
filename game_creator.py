@@ -15,6 +15,7 @@ def generate_whole(user_prompt: str):
     
     # 3. 執行與自動修復迴圈 (Executor 工作)
     debug_times = 3
+    wrong = True
     while debug_times > 0:
         debug_times -= 1
         
@@ -29,16 +30,17 @@ def generate_whole(user_prompt: str):
             continue
 
         # [階段二] Fuzz 壓力測試 (Fuzz Tester)
-        fuzz_result = run_fuzz_test(filepath)
+        fuzz_result = run_fuzz_test()
 
         if fuzz_result["state"]:
             print("🎉 恭喜！遊戲通過所有測試 ！")
+            wrong = False
             break
         else:
             print(f"🔧 [Fuzzer] 測試失敗，正在修復邏輯錯誤...")
             code_content = error_solving(fuzz_result["Text"], code_content)
             
-    if debug_times == 0:
+    if debug_times == 0 and wrong :
         print("⚠️ 非常抱歉，自動修復次數耗盡，請檢查 dest/generated_app.py 進行手動調整。")
 
 if __name__ == "__main__":
