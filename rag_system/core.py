@@ -1,7 +1,10 @@
 import os
 import json
+import sys
 import google.generativeai as genai
 import chromadb
+#import update_catalog
+
 # 這裡需要引用上一層的 config，因為我們需要知道用哪個模型
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -11,15 +14,16 @@ from config import EMBEDDING_MODEL
 
 def select_relevant_modules(user_query: str) -> str:
     """
-    第一階段：讀取 modules_catalog.json，讓 LLM 挑選模組。
+    第一階段：讀取 catalog.json，讓 LLM 挑選模組。
     """
-    catalog_path = "modules_catalog.json"
+    catalog_path = "catalog.json"
     
     # 1. 讀取型錄 (如果沒有檔案，就嘗試即時生成或是報錯)
     if not os.path.exists(catalog_path):
-        print("⚠️ 警告：找不到模組型錄，正在嘗試即時生成...")
-        import update_catalog
-        update_catalog.main()
+        print("⚠️ 警告：找不到模組型錄")
+        sys.exit(1)
+        #update_catalog.main()
+
         
     try:
         with open(catalog_path, "r", encoding="utf-8") as f:
