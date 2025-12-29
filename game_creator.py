@@ -1,7 +1,5 @@
-# game_creator.py - 專案入口點
+# game_creator.py 
 import sys
-
-# === Import 我們拆分好的所有模組 ===
 from llm_agent import complete_prompt, generate_py
 from executor import compile_and_debug, error_solving
 
@@ -35,7 +33,7 @@ def generate_whole(user_prompt: str):
         print("⚠️ 非常抱歉，自動修復次數耗盡，請檢查 dest/generated_app.py 進行手動調整。")
 
 if __name__ == "__main__":
-    print("🎮 AI Game Creator v2.0 (Refactored Edition)")
+    print("🎮 AI Game Creator")
     user_request = input("請輸入你想製作的遊戲 (例如: 貪食蛇): ")
     if user_request:
         generate_whole(user_request)

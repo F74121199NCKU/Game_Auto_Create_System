@@ -2,12 +2,10 @@ import google.generativeai as genai
 import sys
 import os
 
-# 引入我們之前拆分的模組
 from config import * # 包含 API Key, Models, Safety Settings
 from utils import clean_code, code_to_py
 from rag_system.core import get_rag_context
 
-# === 這裡放入生成的邏輯 ===
 
 # 多次生成確保程式碼完整
 def loop_game_generate(code: str, response_planner: str, times_remain: int = 2) -> str:
