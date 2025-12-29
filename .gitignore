@@ -4,3 +4,4 @@ setting
 qdrant_storage
 dest/
 test/
+*.pyc
