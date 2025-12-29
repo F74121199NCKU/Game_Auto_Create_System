@@ -1,8 +1,6 @@
 .venv
 .env
-test.py
 setting
 qdrant_storage
-keys.txt
-test_rag.py
 dest/
+test/
