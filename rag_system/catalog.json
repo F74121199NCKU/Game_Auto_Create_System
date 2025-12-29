@@ -1,0 +1,63 @@
+[
+  {
+    "filename": "camera_box.py",
+    "tags": [
+      "camera",
+      "box-camera",
+      "scroll",
+      "y-sort"
+    ],
+    "description": "Box Camera (箱型相機) 邏輯封裝版。 功能： 1. 建立一個虛擬的 Camera Box。 2. 只有當目標 (target) 移出 Box 邊界時，相機才會移動。 3. 內建 Y-Sort (深度排序) 渲染。"
+  },
+  {
+    "filename": "camera_player_center.py",
+    "tags": [
+      "camera",
+      "scroll",
+      "follow",
+      "player-center",
+      "y-sort"
+    ],
+    "description": "跟隨玩家移動的捲動相機，並內建 Y-Sort 深度排序。 適用於 RPG、冒險遊戲等大地圖遊戲。"
+  },
+  {
+    "filename": "collision.py",
+    "tags": [
+      "collision",
+      "physics",
+      "hitbox",
+      "interaction",
+      "damage"
+    ],
+    "description": "通用碰撞管理器 (Static Utility Class)。 封裝了 Pygame 的 spritecollide 與 groupcollide，提供更語意化的介面。 支援「單體 vs 群體」與「群體 vs 群體」的碰撞偵測與回呼 (Callback) 處理。"
+  },
+  {
+    "filename": "mouse_camera.py",
+    "tags": [
+      "camera",
+      "mouse-control",
+      "rts-camera",
+      "edge-panning",
+      "y-sort"
+    ],
+    "description": "滑鼠控制相機 (RTS Style / Edge Panning)。 功能： 1. 當滑鼠游標移動到視窗邊緣時，相機自動捲動。 2. 實作了「滑鼠鎖定/回彈」機制，當游標超出邊界時會自動彈回，產生無限捲動的手感。 3. 內建 Y-Sort (深度排序) 渲染。 適用遊戲類型：RTS (即時戰略)、模擬經營、塔防遊戲。"
+  },
+  {
+    "filename": "object_pool.py",
+    "tags": [
+      "optimization",
+      "memory",
+      "pool"
+    ],
+    "description": "簡易的物件池，用於重複使用子彈或敵人，避免頻繁的記憶體配置"
+  },
+  {
+    "filename": "sprite_manager.py",
+    "tags": [
+      "sprite",
+      "rendering",
+      "group"
+    ],
+    "description": "所有遊戲物件的基礎類別，繼承自 Pygame 的 Sprite"
+  }
+]

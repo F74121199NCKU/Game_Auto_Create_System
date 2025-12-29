@@ -97,17 +97,34 @@ def generate_py(user_prompt) -> str:
     # 1. 先去資料庫撈程式碼 (RAG 步驟)
     rag_context = get_rag_context(user_prompt)
     
-    # 2. 遊戲企劃師
+    # 2. 遊戲企劃師 (Planner) - JSON 結構化版本
     system_instruction_planner = (
         "你是一個精通 Python Pygame 的資深技術企劃師。"
         "你的任務是根據「使用者需求」與「現有的參考程式碼 (Reference Code)」，規劃一份技術企劃書。"
         f"\n\n【現有參考程式碼 (Reference Modules)】\n{rag_context}\n\n"
-        "【企劃書輸出要求】"
-        "1. **Technical Architecture**: 你必須明確指出要如何使用上述的 Reference Modules。"
-        "2. **Game Rules**: 描述遊戲流程。"
-        "3. **Entities**: 定義數值。"
-        "【限制】"
-        "如果上述參考程式碼是空的，就依照你的通用知識規劃。"
+        
+        "【輸出格式規範 - 嚴格遵守】"
+        "1. **必須輸出純 JSON 格式**。"
+        "2. **嚴禁**包含 Markdown 標記 (如 ```json ... ```)，請直接輸出 JSON 字串，以便程式解析。"
+        "3. JSON 結構必須符合以下 Schema："
+        "{"
+        "  \"game_name\": \"遊戲名稱\","
+        "  \"technical_architecture\": {"
+        "     \"used_modules\": [\"列出必須使用的 RAG 模組檔名，如 box_camera.py\"],"
+        "     \"implementation_details\": \"描述如何整合這些模組的技術細節\""
+        "  },"
+        "  \"game_rules\": ["
+        "     \"規則 1\","
+        "     \"規則 2 (操作方式、勝利條件)\""
+        "  ],"
+        "  \"entities\": ["
+        "     {\"name\": \"Player\", \"variables\": \"速度, 血量...\"},"
+        "     {\"name\": \"Enemy\", \"variables\": \"...\"}"
+        "  ]"
+        "}"
+        
+        "【內容要求】"
+        "請確保 `used_modules` 欄位精準列出 RAG 提供的檔案，若無相關檔案則留空。"
     )
     
     model_planner = genai.GenerativeModel('models/gemini-2.5-flash')
@@ -125,9 +142,9 @@ def generate_py(user_prompt) -> str:
         f.write(response_planner.text)
 
     # 3. 遊戲工程師
-    system_instruction_designer = (
+    system_game_designer = (
         "你是一個資深的 Python 遊戲架構師。"
-        "你的任務是根據企劃書，撰寫一個單一檔案的 Pygame 遊戲。"
+        "你的任務是根據一份 **JSON 格式的技術企劃書**，撰寫一個單一檔案的 Pygame 遊戲。"
         
         "【RAG 強制規範 - 絕對遵守】"
         f"我已讀取了內部的參考模組，內容如下：\n{rag_context}\n"
@@ -154,11 +171,14 @@ def generate_py(user_prompt) -> str:
         "2. 使用 `pygame.math.Vector2` 處理座標。"
         "3. 確保包含 `if __name__ == '__main__':`。"
         "4. 不要輸出 Markdown 標記。"
+        
+        "【輸入資料說明】"
+        "你將收到一份 JSON 格式的企劃書，請解析其中的 `technical_architecture` 與 `game_rules` 來撰寫程式碼。"
     )
     
     model_designer = genai.GenerativeModel('models/gemini-2.5-flash')
     response_designer = model_designer.generate_content(
-        f"{system_instruction_designer}\n\n企劃書: {response_planner.text}",
+        f"{system_game_designer}\n\n企劃書: {response_planner.text}",
         safety_settings=safety_settings
     )
     

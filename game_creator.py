@@ -1,7 +1,7 @@
 # game_creator.py 
 import sys
 from llm_agent import complete_prompt, generate_py
-import Debug.fuzz_tester as fuzz_tester
+from Debug.fuzz_tester import run_fuzz_test
 from Debug.executor import compile_and_debug, error_solving
 def generate_whole(user_prompt: str):
     # 1. 優化提示詞
@@ -29,7 +29,7 @@ def generate_whole(user_prompt: str):
             continue
 
         # [階段二] Fuzz 壓力測試 (Fuzz Tester)
-        fuzz_result = fuzz_tester.run_fuzz_test(filepath)
+        fuzz_result = run_fuzz_test(filepath)
 
         if fuzz_result["state"]:
             print("🎉 恭喜！遊戲通過所有測試 ！")

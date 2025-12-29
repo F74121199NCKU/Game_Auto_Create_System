@@ -10,36 +10,41 @@ from config import EMBEDDING_MODEL
 
 def select_relevant_modules(user_query: str) -> str:
     """
-    第一階段：讓 LLM 根據需求，從現有檔案列表中挑選出可能需要的模組。
-    這能大幅增加 RAG 的準確度 (Query Expansion)。
+    第一階段：讀取 modules_catalog.json，讓 LLM 挑選模組。
     """
-    folder_path = "reference_modules"
-    if not os.path.exists(folder_path):
+    catalog_path = "modules_catalog.json"
+    
+    # 1. 讀取型錄 (如果沒有檔案，就嘗試即時生成或是報錯)
+    if not os.path.exists(catalog_path):
+        print("⚠️ 警告：找不到模組型錄，正在嘗試即時生成...")
+        import update_catalog
+        update_catalog.main()
+        
+    try:
+        with open(catalog_path, "r", encoding="utf-8") as f:
+            catalog_data = json.load(f)
+            # 將 JSON 轉成字串給 LLM 看
+            catalog_str = json.dumps(catalog_data, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"❌ 讀取型錄失敗: {e}")
         return ""
 
-    # 1. 獲取所有現有的模組檔名
-    available_files = [f for f in os.listdir(folder_path) if f.endswith(".py")]
-    files_str = ", ".join(available_files)
-    
-    print(f"🤔 正在分析需求，思考需要哪些模組 (候選名單: {len(available_files)} 個)...")
+    print(f"🤔 正在根據型錄分析需求...")
 
-    # 2. 詢問 LLM (使用快速模型即可)
+    # 2. 詢問 LLM
     model = genai.GenerativeModel('models/gemini-2.5-flash')
     
     prompt = (
         "你是一個 Python 遊戲開發的技術選型專家。"
-        f"目前我們的儲存庫中有以下模組檔案：[{files_str}]。"
+        f"目前我們的軍火庫清單如下 (JSON 格式)：\n{catalog_str}\n"
         f"使用者的需求是：'{user_query}'。"
         
         "【任務】"
-        "請判斷為了完成這個需求，我們**必須**或**強烈建議**使用哪些模組？"
-        "請只列出檔名，用逗號分隔。"
-        "如果不確定或都不需要，請回答 'NONE'。"
-        
-        "【範例輸出】"
-        "camera_scroll.py, object_pool.py"
+        "請閱讀每個模組的 `description` 與 `tags`，判斷哪些模組是完成此需求**必須**使用的？"
+        "請只回傳 `filename`，用逗號分隔。"
+        "例如: 'box_camera.py, collision_manager.py'"
     )
-
+    
     try:
         response = model.generate_content(prompt)
         selected = response.text.strip()
@@ -82,7 +87,7 @@ def get_rag_context(user_query: str) -> str:
         # 4. 搜尋
         results = collection.query(
             query_embeddings=[query_embedding],
-            n_results=5, 
+            n_results = 10, 
             include=['documents', 'distances'] 
         )
         
