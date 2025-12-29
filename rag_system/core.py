@@ -1,4 +1,5 @@
 import os
+import json
 import google.generativeai as genai
 import chromadb
 # 這裡需要引用上一層的 config，因為我們需要知道用哪個模型
@@ -44,7 +45,7 @@ def select_relevant_modules(user_query: str) -> str:
         "請只回傳 `filename`，用逗號分隔。"
         "例如: 'box_camera.py, collision_manager.py'"
     )
-    
+
     try:
         response = model.generate_content(prompt)
         selected = response.text.strip()
