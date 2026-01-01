@@ -1,1233 +1,962 @@
 import pygame
 import sys
-import random
+from enum import Enum, auto
 import math
-from collections import deque
-from pygame.math import Vector2
 import json
-import enum
-import os # For dummy asset creation
 
-pygame.init() # Initialize Pygame modules globally, including font module
-
-# --- RAG Module 1: object_pool.py ---
+# --- RAG 模組整合 (Reference Modules) ---
+# object_pool.py
 class ObjectPool:
-    """
-    ObjectPool class for managing reusable game objects.
-    Reduces the overhead of object creation and destruction.
-    """
-    def __init__(self, cls, initial_size, *args, **kwargs):
-        """
-        Initializes the object pool.
-
-        Args:
-            cls (type): The class of objects to be pooled.
-            initial_size (int): The initial number of objects to create in the pool.
-            *args: Positional arguments to pass to the object's constructor.
-            **kwargs: Keyword arguments to pass to the object's constructor.
-        """
-        self.cls = cls
-        self.args = args
-        self.kwargs = kwargs
-        self.pool = deque()
-        self._total_objects = 0 # Track total objects created by this pool
-        self._active_objects_count = 0 # Track objects currently in use
+    def __init__(self, obj_class, initial_size):
+        self.obj_class = obj_class
+        self.pool = []
+        self.in_use = []
         self._create_objects(initial_size)
-        print(f"ObjectPool for {cls.__name__} initialized with {initial_size} objects.")
 
     def _create_objects(self, count):
-        """Creates new objects and adds them to the pool."""
         for _ in range(count):
-            # Pass None as the first argument for the pool reference in __init__
-            # This allows the init method of the object to set the actual pool reference.
-            obj = self.cls(None, *self.args, **self.kwargs) # Ensure cls.__init__ can take 'None' for pool_ref
-            obj.is_active = False # Custom attribute to track activity state
-            self.pool.append(obj)
-            self._total_objects += 1
+            # Objects from pool should be able to be initialized with minimal/dummy args,
+            # then fully configured via a reset_state method.
+            self.pool.append(self.obj_class())
 
     def get(self, *args, **kwargs):
-        """
-        Retrieves an object from the pool. If the pool is empty, a new object is created.
-
-        Args:
-            *args: Positional arguments to pass to the object's init/reset method.
-            **kwargs: Keyword arguments to pass to the object's init/reset method.
-
-        Returns:
-            object: An active object from the pool.
-        """
         if not self.pool:
-            # print(f"Pool for {self.cls.__name__} exhausted, creating new object.")
+            # Optionally grow the pool if empty
+            # print(f"Pool for {self.obj_class.__name__} is empty, creating 1 new object.")
             self._create_objects(1)
-            
-        obj = self.pool.popleft()
-        obj.is_active = True
-        self._active_objects_count += 1
-        if hasattr(obj, 'init'):
-            obj.init(*args, **kwargs)
+        obj = self.pool.pop()
+        # Re-initialize the object with specific runtime arguments via reset_state
+        obj.reset_state(*args, **kwargs) 
+        self.in_use.append(obj)
         return obj
 
     def release(self, obj):
-        """
-        Releases an object back into the pool.
-
-        Args:
-            obj (object): The object to be released.
-        """
-        if obj.is_active: # Only release if currently active
-            obj.is_active = False
-            self._active_objects_count -= 1
-            if hasattr(obj, 'reset'): # Optional: reset object state before returning to pool
-                obj.reset()
+        if obj in self.in_use:
+            self.in_use.remove(obj)
+            obj.kill() # Remove from any sprite groups it's a member of
             self.pool.append(obj)
         else:
-            print(f"Warning: Attempted to release an inactive object of type {self.cls.__name__}.")
+            print(f"Warning: Object {obj} not found in active objects for release.")
 
-    def count_active(self):
-        """Returns the number of objects currently in use (not in the pool)."""
-        return self._active_objects_count
+    def get_in_use(self):
+        return self.in_use
 
-    def count_total(self):
-        """Returns the total number of objects managed by this pool (active + available)."""
-        return self._total_objects
-
-# --- RAG Module 2: sprite_manager.py ---
+# sprite_manager.py
 class GameSprite(pygame.sprite.Sprite):
-    """
-    Base class for all game sprites, extending Pygame's Sprite.
-    Provides common attributes like image, rect, and an 'is_active' flag
-    for use with object pools.
-    """
-    def __init__(self, image, initial_pos=(0, 0)):
-        """
-        Initializes the GameSprite.
-
-        Args:
-            image (pygame.Surface): The surface to use for the sprite.
-            initial_pos (tuple): (x, y) initial position for the sprite.
-        """
+    def __init__(self, x, y, width=None, height=None, image_path=None, image_surface=None, **kwargs):
         super().__init__()
-        self.image = image
-        self.rect = self.image.get_rect(center=initial_pos)
-        self.pos = Vector2(initial_pos)  # Use Vector2 for float precision
-        self.is_active = True  # Flag for object pool management
+        
+        # Determine the image source
+        if image_path:
+            self.image = pygame.image.load(image_path).convert_alpha()
+        elif image_surface:
+            self.image = image_surface.convert_alpha() if image_surface.get_flags() & pygame.SRCALPHA else image_surface.convert()
+        else:
+            # Default to a generic placeholder if no image provided
+            self.image = pygame.Surface((width or 10, height or 10), pygame.SRCALPHA)
+            self.image.fill((255, 0, 255, 128)) # Pink transparent placeholder
+            
+        # Scale image if width and height are provided and an image was loaded/created
+        if width is not None and height is not None and (image_path or image_surface):
+            self.image = pygame.transform.scale(self.image, (width, height))
+            
+        self.rect = self.image.get_rect(topleft=(x, y))
+        self.pos = pygame.math.Vector2(x, y) # 浮點數座標
+        self.initial_pos = pygame.math.Vector2(x, y) # for reset
+        self.original_image = self.image.copy() # Store original for potential rotation/scaling or alpha resets
+        self.z_index = kwargs.get('z_index', 0) # For Y-sorting or custom layer sorting
 
-    def update(self, dt):
-        """
-        Abstract update method. Should be overridden by subclasses.
-        Args:
-            dt (float): Delta time, time elapsed since last frame in seconds.
-        """
+    def update(self, dt, **kwargs):
+        # Base update for GameSprite can be empty or handle basic animation/state
         pass
 
-    def draw(self, screen):
-        """
-        Abstract draw method. Can be overridden by subclasses for custom drawing.
-        Args:
-            screen (pygame.Surface): The surface to draw the sprite on.
-        """
-        screen.blit(self.image, self.rect)
+    def draw(self, surface, offset):
+        # Draw the sprite on the surface, applying camera offset
+        surface.blit(self.image, self.rect.topleft + offset)
 
-# --- RAG Module 3: camera_player_center.py ---
+# camera_player_center.py
 class CameraScrollGroup(pygame.sprite.Group):
-    """
-    A sprite group that implements camera scrolling, keeping a focus sprite (e.g., player)
-    centered on the screen. Also supports Y-sorting for depth perception and frustum culling.
-    """
-    def __init__(self, screen_width, screen_height, focus_sprite, world_size=None, culling_margin=100):
-        """
-        Initializes the CameraScrollGroup.
-
-        Args:
-            screen_width (int): The width of the game screen.
-            screen_height (int): The height of the game screen.
-            focus_sprite (GameSprite): The sprite that the camera will follow (usually the player).
-            world_size (tuple, optional): (width, height) of the total game world.
-                                          If None, the world is considered infinite. Defaults to None.
-            culling_margin (int): Extra pixel buffer for frustum culling. Sprites outside
-                                  this margin will not be drawn.
-        """
+    def __init__(self, camera_width, camera_height, level_width, level_height, margin=100, bg_image_path=None):
         super().__init__()
-        self.screen_width = screen_width
-        self.screen_height = screen_height
-        self.half_width = screen_width // 2
-        self.half_height = screen_height // 2
-        self.offset = Vector2(0, 0)
-        self.focus_sprite = focus_sprite
-        self.world_size = world_size
-        self.culling_margin = culling_margin
+        self.camera_rect = pygame.Rect(0, 0, camera_width, camera_height)
+        self.level_width = level_width
+        self.level_height = level_height
+        self.margin = margin  # Distance from the edge before camera starts moving
         
-        # Background surface (e.g., ground texture)
-        self.ground_surf = pygame.Surface((100, 100))
-        self.ground_surf.fill((30, 30, 30)) # Default dark grey
+        self.bg_image = None
+        if bg_image_path:
+            try:
+                self.bg_image = pygame.image.load(bg_image_path).convert()
+            except pygame.error as e:
+                print(f"Warning: Could not load background image '{bg_image_path}': {e}")
+                # Create a placeholder if image fails to load
+                self.bg_image = pygame.Surface((self.camera_rect.width, self.camera_rect.height))
+                self.bg_image.fill((135, 206, 235)) # Sky blue placeholder
+
+    def custom_draw(self, surface, target_sprite):
+        # Adjust camera_rect to center on target_sprite, clamping within level bounds
+        target_center_x = target_sprite.rect.centerx
+        target_center_y = target_sprite.rect.centery
+
+        # Horizontal clamping
+        self.camera_rect.centerx = target_center_x
+        self.camera_rect.left = max(0, self.camera_rect.left)
+        self.camera_rect.right = min(self.level_width, self.camera_rect.right)
+
+        # Vertical clamping (keep camera fixed vertically if level is not tall enough, or center)
+        self.camera_rect.centery = target_center_y
+        self.camera_rect.top = max(0, self.camera_rect.top)
+        self.camera_rect.bottom = min(self.level_height, self.camera_rect.bottom)
         
-        # Initial camera position
-        self.offset.x = self.focus_sprite.pos.x - self.half_width
-        self.offset.y = self.focus_sprite.pos.y - self.half_height
-
-    def set_ground_texture(self, texture_path):
-        """Sets the background ground texture."""
-        try:
-            self.ground_surf = pygame.image.load(texture_path).convert_alpha()
-        except pygame.error:
-            print(f"Warning: Could not load ground texture from {texture_path}. Using default.")
-
-    def custom_draw(self, surface):
-        """
-        Draws sprites with camera offset, Y-sorting, and frustum culling.
-        Also draws a pseudo-infinite background.
-
-        Args:
-            surface (pygame.Surface): The surface to draw on (usually the main screen).
-        """
-        # Update camera offset based on focus sprite
-        self.offset.x = self.focus_sprite.pos.x - self.half_width
-        self.offset.y = self.focus_sprite.pos.y - self.half_height
-
-        # Clamp camera to world boundaries if world_size is defined
-        if self.world_size:
-            self.offset.x = max(0, min(self.offset.x, self.world_size[0] - self.screen_width))
-            self.offset.y = max(0, min(self.offset.y, self.world_size[1] - self.screen_height))
-
-        # --- Draw pseudo-infinite background ---
-        tile_width, tile_height = self.ground_surf.get_size()
+        # Calculate offset for drawing sprites
+        offset = pygame.math.Vector2(-self.camera_rect.x, -self.camera_rect.y)
         
-        # Calculate the top-left corner of the visible area in world coordinates
-        cam_x, cam_y = self.offset.x, self.offset.y
+        # Draw background
+        if self.bg_image:
+            bg_width = self.bg_image.get_width()
+            bg_height = self.bg_image.get_height()
+            
+            # Calculate where to start drawing the background
+            start_x = (self.camera_rect.x // bg_width) * bg_width
+            start_y = (self.camera_rect.y // bg_height) * bg_height
+            
+            # Draw enough tiles to cover the screen
+            for x in range(start_x, self.camera_rect.x + self.camera_rect.width + bg_width, bg_width):
+                for y in range(start_y, self.camera_rect.y + self.camera_rect.height + bg_height, bg_height):
+                    surface.blit(self.bg_image, (x + offset.x, y + offset.y))
 
-        # Determine which tile indices are visible
-        start_x_tile = int(cam_x / tile_width)
-        start_y_tile = int(cam_y / tile_height)
-        end_x_tile = int((cam_x + self.screen_width) / tile_width) + 1
-        end_y_tile = int((cam_y + self.screen_height) / tile_height) + 1
+        # Sort sprites by z_index (and then y-coordinate for Y-sorting)
+        sorted_sprites = sorted(self.sprites(), key=lambda sprite: (sprite.z_index, sprite.rect.bottom))
 
-        for x in range(start_x_tile, end_x_tile):
-            for y in range(start_y_tile, end_y_tile):
-                # Calculate screen position for each tile
-                screen_x = x * tile_width - cam_x
-                screen_y = y * tile_height - cam_y
-                surface.blit(self.ground_surf, (screen_x, screen_y))
+        # Draw visible sprites with frustum culling + margin
+        for sprite in sorted_sprites:
+            # Create a larger cull rect for the margin
+            cull_rect = self.camera_rect.inflate(self.margin * 2, self.margin * 2)
+            if cull_rect.colliderect(sprite.rect):
+                surface.blit(sprite.image, sprite.rect.topleft + offset)
+    
+    def get_offset(self):
+        return pygame.math.Vector2(-self.camera_rect.x, -self.camera_rect.y)
 
-        # --- Draw sprites with Y-sorting and frustum culling ---
-        # Sort sprites by their bottom-most point (centery is a good approximation for 2D top-down)
-        for sprite in sorted(self.sprites(), key=lambda sprite: sprite.rect.centery):
-            # Frustum Culling: Only draw sprites that are within or near the screen view
-            if sprite.is_active: # Only draw active sprites
-                # Add margin to culling bounds
-                cull_left = self.offset.x - self.culling_margin
-                cull_right = self.offset.x + self.screen_width + self.culling_margin
-                cull_top = self.offset.y - self.culling_margin
-                cull_bottom = self.offset.y + self.screen_height + self.culling_margin
-
-                if cull_left <= sprite.rect.right and \
-                   cull_right >= sprite.rect.left and \
-                   cull_top <= sprite.rect.bottom and \
-                   cull_bottom >= sprite.rect.top:
-                    # Apply offset to sprite's position
-                    surface.blit(sprite.image, sprite.rect.topleft - self.offset)
-
-# --- RAG Module 4: collision.py ---
+# collision.py
 class CollisionManager:
-    """
-    Manages collision detection and resolution between sprites and groups.
-    Provides methods for common collision patterns.
-    """
     def __init__(self):
-        pass # No specific initialization needed for this manager itself
+        pass
 
-    def apply_sprite_vs_group(self, sprite, group, callback=None, dokill=False):
-        """
-        Checks for collisions between a single sprite and a group of sprites.
+    def apply_sprite_vs_sprite(self, sprite1, sprite2, on_collide=None):
+        if sprite1.rect.colliderect(sprite2.rect):
+            if on_collide:
+                on_collide(sprite1, sprite2)
+            return True
+        return False
 
-        Args:
-            sprite (pygame.sprite.Sprite): The single sprite to check.
-            group (pygame.sprite.Group): The group of sprites to check against.
-            callback (callable, optional): A function to call if a collision occurs.
-                                          It should accept (sprite, collided_sprite) as arguments.
-            dokill (bool): If True, collided sprites in the group will be removed. Defaults to False.
+    def apply_sprite_vs_group(self, sprite, group, on_collide=None):
+        collided_sprites = pygame.sprite.spritecollide(sprite, group, False)
+        if collided_sprites:
+            if on_collide:
+                for collided_sprite in collided_sprites:
+                    on_collide(sprite, collided_sprite)
+            return True
+        return False
 
-        Returns:
-            list: A list of sprites from the group that collided with the single sprite.
-        """
-        collided_sprites = pygame.sprite.spritecollide(sprite, group, dokill)
-        if callback:
-            for collided_sprite in collided_sprites:
-                callback(sprite, collided_sprite)
-        return collided_sprites
+    def apply_group_vs_group(self, group1, group2, on_collide=None):
+        collisions = pygame.sprite.groupcollide(group1, group2, False, False)
+        if collisions:
+            if on_collide:
+                for sprite1, collided_sprites in collisions.items():
+                    for sprite2 in collided_sprites:
+                        on_collide(sprite1, sprite2)
+            return True
+        return False
 
-    def apply_group_vs_group(self, group1, group2, callback=None, dokill1=False, dokill2=False):
-        """
-        Checks for collisions between two groups of sprites.
-
-        Args:
-            group1 (pygame.sprite.Group): The first group.
-            group2 (pygame.sprite.Group): The second group.
-            callback (callable, optional): A function to call if a collision occurs.
-                                          It should accept (sprite1, sprite2) as arguments.
-            dokill1 (bool): If True, sprites in group1 that collide will be removed. Defaults to False.
-            dokill2 (bool): If True, sprites in group2 that collide will be removed. Defaults to False.
-
-        Returns:
-            dict: A dictionary mapping sprites from group1 to a list of sprites from group2 that they collided with.
-        """
-        collided_dict = pygame.sprite.groupcollide(group1, group2, dokill1, dokill2)
-        if callback:
-            for sprite1, collided_list in collided_dict.items():
-                for sprite2 in collided_list:
-                    callback(sprite1, sprite2)
-        return collided_dict
-
-# --- Game Enums/States ---
-class GameState(enum.Enum):
-    MAIN_MENU = 1
-    RULES = 2
-    GAME_RUNNING = 3
-    PAUSED = 4
-    LEVEL_UP = 5
-    GAME_OVER = 6
-
-# --- Utility Functions ---
-def clamp(value, min_value, max_value):
-    return max(min_value, min(value, max_value))
-
-# --- Constants and Configuration ---
-SCREEN_WIDTH = 1280
-SCREEN_HEIGHT = 720
+# --- 遊戲特定常量 ---
+SCREEN_WIDTH = 1000
+SCREEN_HEIGHT = 700
 FPS = 60
 
 # Colors
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+BLUE = (0, 0, 255)
 GRAY = (100, 100, 100)
 LIGHT_GRAY = (200, 200, 200)
-RED = (200, 0, 0)
-GREEN = (0, 200, 0)
-BLUE = (0, 0, 200)
-YELLOW = (255, 255, 0)
-TRANSPARENT_BLACK = (0, 0, 0, 150) # For pause/level-up overlays
 
-# Fonts (CRITICAL: Chinese font)
-try:
-    # Ensure font module is initialized before matching/loading fonts
-    pygame.font.init() 
-    FONT_PATH = pygame.font.match_font('microsoftjhenghei') or \
-                pygame.font.match_font('simhei') or \
-                pygame.font.get_default_font()
-    FONT_SM = pygame.font.Font(FONT_PATH, 24)
-    FONT_MD = pygame.font.Font(FONT_PATH, 36)
-    FONT_LG = pygame.font.Font(FONT_PATH, 48)
-    FONT_XL = pygame.font.Font(FONT_PATH, 72)
-except Exception as e:
-    print(f"Error loading Chinese font: {e}. Falling back to default.")
-    FONT_PATH = pygame.font.get_default_font()
-    FONT_SM = pygame.font.Font(FONT_PATH, 24)
-    FONT_MD = pygame.font.Font(FONT_PATH, 36)
-    FONT_LG = pygame.font.Font(FONT_PATH, 48)
-    FONT_XL = pygame.font.Font(FONT_PATH, 72)
+# --- 遊戲狀態管理 ---
+class GameState(Enum):
+    MENU = auto()
+    PLAYING = auto()
+    PAUSED = auto()
+    RULES = auto()
+    WIN = auto()
+    LOSE = auto()
 
-# --- UI Components ---
+# --- UI 系統 ---
+class FontManager:
+    def __init__(self):
+        pygame.font.init()
+        # 嘗試加載微軟正黑體，如果找不到則使用宋體或系統預設字體
+        self.font_name = pygame.font.match_font('microsoftjhenghei') or \
+                         pygame.font.match_font('simhei') or \
+                         pygame.font.get_default_font()
+        self.fonts = {}
+
+    def get_font(self, size):
+        if size not in self.fonts:
+            self.fonts[size] = pygame.font.Font(self.font_name, size)
+        return self.fonts[size]
+
 class Button:
-    def __init__(self, text, x, y, width, height, font, action=None,
-                 bg_color=GRAY, hover_color=LIGHT_GRAY, text_color=WHITE):
+    def __init__(self, rect, text, font, text_color, bg_color, hover_color, on_click=None):
+        self.rect = pygame.Rect(rect)
         self.text = text
-        self.rect = pygame.Rect(x - width // 2, y - height // 2, width, height)
         self.font = font
-        self.action = action
+        self.text_color = text_color
         self.bg_color = bg_color
         self.hover_color = hover_color
-        self.text_color = text_color
         self.current_bg_color = bg_color
+        self.on_click = on_click
+        self.text_surface = self.font.render(self.text, True, self.text_color)
+        self.text_rect = self.text_surface.get_rect(center=self.rect.center)
 
-    def draw(self, screen):
-        self.current_bg_color = self.hover_color if self.rect.collidepoint(pygame.mouse.get_pos()) else self.bg_color
-        pygame.draw.rect(screen, self.current_bg_color, self.rect, border_radius=5)
-        text_surf = self.font.render(self.text, True, self.text_color)
-        text_rect = text_surf.get_rect(center=self.rect.center)
-        screen.blit(text_surf, text_rect)
+    def draw(self, surface):
+        pygame.draw.rect(surface, self.current_bg_color, self.rect, border_radius=5)
+        surface.blit(self.text_surface, self.text_rect)
 
     def handle_event(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+        if event.type == pygame.MOUSEMOTION:
             if self.rect.collidepoint(event.pos):
-                if self.action:
-                    self.action()
-                return True
+                self.current_bg_color = self.hover_color
+            else:
+                self.current_bg_color = self.bg_color
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.rect.collidepoint(event.pos):
+                if self.on_click:
+                    self.on_click()
+                    return True
         return False
 
-# --- Game Entities ---
-class Player(GameSprite):
-    def __init__(self, game_data, initial_pos):
-        player_image = pygame.Surface((32, 32), pygame.SRCALPHA)
-        pygame.draw.circle(player_image, BLUE, (16, 16), 16)
-        super().__init__(player_image, initial_pos)
-
-        self.data = game_data['entities'][0]['variables']
-        self.hp = self.data['initial_hp']
-        self.max_hp = self.data['max_hp']
-        self.speed = self.data['movement_speed']
-        self.exp = self.data['initial_exp']
-        self.level = 1
-        self.exp_to_level_up = self.data['exp_to_level_up']
-        self.exp_level_up_increase_rate = self.data['exp_level_up_increase_rate']
-        self.knife_damage = self.data['knife_initial_damage']
-        self.knife_attack_interval = self.data['knife_initial_attack_interval'] # seconds per knife
-        self.collision_radius = self.data['collision_radius']
-
-        self.velocity = Vector2(0, 0)
-        self.last_attack_time = 0.0 # Time when last knife was fired
-        self.invincibility_duration = 0.5 # seconds
-        self.invincible_timer = 0.0
-        self.is_invincible = False
-        self.blink_interval = 0.1 # for visual feedback when invincible
-
-    def update(self, dt):
-        if self.is_invincible:
-            self.invincible_timer -= dt
-            if self.invincible_timer <= 0:
-                self.is_invincible = False
-        
-        # Movement
-        self.pos += self.velocity * dt
-        self.rect.center = (round(self.pos.x), round(self.pos.y))
-
-        # Auto-attack
-        current_time = pygame.time.get_ticks() / 1000.0
-        if current_time - self.last_attack_time >= self.knife_attack_interval:
-            self.last_attack_time = current_time
-            return True # Signal to fire knife
-        return False # No knife fired
-
-    def take_damage(self, amount):
-        if not self.is_invincible:
-            self.hp = max(0, self.hp - amount)
-            self.is_invincible = True
-            self.invincible_timer = self.invincibility_duration
-            if self.hp <= 0:
-                print("Player defeated!")
-                return True # Player defeated
-        return False
-
-    def gain_exp(self, amount):
-        self.exp += amount
-        if self.exp >= self.exp_to_level_up:
-            self.exp -= self.exp_to_level_up # Carry over remaining exp
-            self.level_up()
-            return True # Signal level up
-        return False
-
-    def level_up(self):
-        self.level += 1
-        self.exp_to_level_up *= (1 + self.exp_level_up_increase_rate)
-        self.exp_to_level_up = int(self.exp_to_level_up)
-        print(f"Player Leveled Up! New level: {self.level}, Next EXP: {self.exp_to_level_up}")
-
-    def apply_upgrade(self, upgrade_type):
-        upgrades = self.data['upgrade_options']
-        if upgrade_type == "damage_increase":
-            self.knife_damage += upgrades['damage_increase']
-            print(f"Upgrade: Knife Damage +{upgrades['damage_increase']} (Current: {self.knife_damage})")
-        elif upgrade_type == "attack_speed_interval_decrease":
-            self.knife_attack_interval = max(0.1, self.knife_attack_interval - upgrades['attack_speed_interval_decrease'])
-            print(f"Upgrade: Attack Interval -{upgrades['attack_speed_interval_decrease']} (Current: {self.knife_attack_interval:.2f})")
-        elif upgrade_type == "health_recovery_percentage":
-            heal_amount = self.max_hp * upgrades['health_recovery_percentage']
-            self.hp = min(self.max_hp, self.hp + heal_amount)
-            print(f"Upgrade: Health Recovered +{int(heal_amount)} (Current: {self.hp}/{self.max_hp})")
-        
-    def draw(self, screen):
-        if self.is_invincible and int(pygame.time.get_ticks() / (self.blink_interval * 1000)) % 2 == 0:
-            return # Blink effect
-        super().draw(screen)
-
-class Knife(GameSprite):
-    def __init__(self, knife_pool_placeholder, knives_collision_group_ref, all_updatable_sprites_ref, camera_drawing_group_ref): # CRITICAL: receives pool placeholder and groups
-        knife_image = pygame.Surface((16, 16), pygame.SRCALPHA)
-        pygame.draw.rect(knife_image, YELLOW, (0, 0, 16, 16))
-        super().__init__(knife_image)
-        self.knives_collision_group = knives_collision_group_ref
-        self.all_updatable_sprites = all_updatable_sprites_ref
-        self.camera_drawing_group = camera_drawing_group_ref
-        self.knife_pool = None # Actual pool will be set in init()
-        self.speed = 0
-        self.damage = 0
-        self.direction = Vector2(0, 0)
-        self.lifetime = 0
-        self.time_alive = 0.0
-        self.is_active = False # Initial state for pooled objects
-
-    def init(self, pos, direction, damage, speed, lifetime, knife_pool_ref): # Pool ref passed at activation
-        self.pos = Vector2(pos)
-        self.rect.center = (round(self.pos.x), round(self.pos.y))
-        self.direction = direction.normalize() if direction.length() > 0 else Vector2(0, -1)
-        self.damage = damage
-        self.speed = speed
-        self.lifetime = lifetime
-        self.time_alive = 0.0
-        self.knife_pool = knife_pool_ref # Store the actual pool reference
-        self.is_active = True
-        
-        # Add to all relevant groups
-        self.knives_collision_group.add(self)
-        self.all_updatable_sprites.add(self)
-        self.camera_drawing_group.add(self)
-
-    def update(self, dt):
-        if not self.is_active:
-            return
-
-        self.pos += self.direction * self.speed * dt
-        self.rect.center = (round(self.pos.x), round(self.pos.y))
-
-        self.time_alive += dt
-        if self.time_alive >= self.lifetime:
-            self.die()
-
-    def die(self):
-        self.is_active = False
-        # Remove from all relevant groups
-        self.knives_collision_group.remove(self)
-        self.all_updatable_sprites.remove(self)
-        self.camera_drawing_group.remove(self)
-        if self.knife_pool: # Ensure pool reference exists before releasing
-            self.knife_pool.release(self)
-
-    def reset(self):
-        # Reset state for pooling
-        self.speed = 0
-        self.damage = 0
-        self.direction = Vector2(0, 0)
-        self.lifetime = 0
-        self.time_alive = 0.0
-        self.is_active = False
-        self.knife_pool = None # Clear pool reference on reset
-        # Ensure object is removed from groups on reset, as a safeguard
-        if self in self.knives_collision_group: self.knives_collision_group.remove(self)
-        if self in self.all_updatable_sprites: self.all_updatable_sprites.remove(self)
-        if self in self.camera_drawing_group: self.camera_drawing_group.remove(self)
-
-class Enemy(GameSprite):
-    def __init__(self, enemy_pool_placeholder, enemies_collision_group_ref, all_updatable_sprites_ref, camera_drawing_group_ref): # CRITICAL: receives pool placeholder and groups
-        enemy_image = pygame.Surface((32, 32), pygame.SRCALPHA)
-        pygame.draw.circle(enemy_image, RED, (16, 16), 16)
-        super().__init__(enemy_image)
-        self.enemies_collision_group = enemies_collision_group_ref
-        self.all_updatable_sprites = all_updatable_sprites_ref
-        self.camera_drawing_group = camera_drawing_group_ref
-        self.enemy_pool = None # Actual pool will be set in init()
-        self.hp = 0
-        self.max_hp = 0
-        self.speed = 0
-        self.collision_damage = 0
-        self.exp_drop = 0
-        self.is_active = False # Initial state for pooled objects
-        self.player_ref = None # To follow player
-
-    def init(self, pos, hp, speed, collision_damage, exp_drop, player_ref, enemy_pool_ref): # Pool ref passed at activation
-        self.pos = Vector2(pos)
-        self.rect.center = (round(self.pos.x), round(self.pos.y))
-        self.hp = hp
-        self.max_hp = hp
-        self.speed = speed
-        self.collision_damage = collision_damage
-        self.exp_drop = exp_drop
-        self.player_ref = player_ref
-        self.enemy_pool = enemy_pool_ref # Store the actual pool reference
-        self.is_active = True
-        
-        # Add to all relevant groups
-        self.enemies_collision_group.add(self)
-        self.all_updatable_sprites.add(self)
-        self.camera_drawing_group.add(self)
-
-    def update(self, dt):
-        if not self.is_active or not self.player_ref:
-            return
-
-        # Move towards player
-        player_pos = self.player_ref.pos
-        direction = player_pos - self.pos
-        if direction.length() > 0:
-            direction.normalize_ip()
-            self.pos += direction * self.speed * dt
-            self.rect.center = (round(self.pos.x), round(self.pos.y))
-
-    def take_damage(self, amount):
-        self.hp -= amount
-        if self.hp <= 0:
-            self.die()
-            return True # Enemy defeated
-        return False
-
-    def die(self):
-        self.is_active = False
-        # Remove from all relevant groups
-        self.enemies_collision_group.remove(self)
-        self.all_updatable_sprites.remove(self)
-        self.camera_drawing_group.remove(self)
-        if self.enemy_pool:
-            self.enemy_pool.release(self)
-
-    def reset(self):
-        # Reset state for pooling
-        self.hp = 0
-        self.max_hp = 0
-        self.speed = 0
-        self.collision_damage = 0
-        self.exp_drop = 0
-        self.is_active = False
-        self.player_ref = None
-        self.enemy_pool = None
-        # Ensure object is removed from groups on reset, as a safeguard
-        if self in self.enemies_collision_group: self.enemies_collision_group.remove(self)
-        if self in self.all_updatable_sprites: self.all_updatable_sprites.remove(self)
-        if self in self.camera_drawing_group: self.camera_drawing_group.remove(self)
-
-class EnemySpawner:
-    def __init__(self, game_data, enemy_pool, enemies_collision_group, player_ref):
-        self.data = game_data['entities'][2]['variables'] # Assuming Enemy_SmallGrunt is the 3rd entity
-        self.enemy_pool = enemy_pool
-        self.enemies_collision_group = enemies_collision_group
-        self.player_ref = player_ref
-        self.spawn_interval = self.data['initial_spawn_frequency']
-        self.last_spawn_time = 0.0
-
-        self.active_enemies_count = 0
-
-    def update(self, dt):
-        current_time = pygame.time.get_ticks() / 1000.0
-        if current_time - self.last_spawn_time >= self.spawn_interval:
-            self.last_spawn_time = current_time
-            self.spawn_enemy()
-    
-    def spawn_enemy(self):
-        # Spawn enemy outside screen, relative to player
-        player_pos = self.player_ref.pos
-        
-        # Choose a random direction to spawn from (4 quadrants)
-        angle = random.uniform(0, 2 * math.pi)
-        spawn_distance = max(SCREEN_WIDTH, SCREEN_HEIGHT) / 2 + 100 # At least 100px outside screen
-        spawn_offset = Vector2(math.cos(angle), math.sin(angle)) * spawn_distance
-        spawn_pos = player_pos + spawn_offset
-
-        enemy = self.enemy_pool.get(
-            spawn_pos,
-            self.data['hp'],
-            self.data['movement_speed'],
-            self.data['collision_damage'],
-            self.data['exp_drop'],
-            self.player_ref,
-            enemy_pool_ref=self.enemy_pool # CRITICAL: Pass the pool itself here in `init`
-        )
-        self.active_enemies_count += 1
-        
-    def enemy_killed(self):
-        self.active_enemies_count = max(0, self.active_enemies_count - 1)
-
-    def reset(self):
-        self.last_spawn_time = 0.0
-        self.active_enemies_count = 0
-        # Ensure all active enemies are released back to pool
-        for enemy in list(self.enemies_collision_group.sprites()): # Iterate over copy
-            if enemy.is_active:
-                enemy.die() # This will release it to pool and remove from group
-
-# --- Game States Handlers (Menus, Game Play) ---
-class BaseState:
-    def __init__(self, game):
-        self.game = game
-
-    def enter(self, **kwargs):
-        pass
-
-    def exit(self):
-        pass
-
-    def handle_input(self, event):
-        pass
-
-    def update(self, dt):
-        pass
-
-    def draw(self, screen):
-        pass
-
-class MainMenu(BaseState):
-    def __init__(self, game):
-        super().__init__(game)
+class Menu:
+    def __init__(self, font_manager, title_text, options, callback_func, screen_width, screen_height):
+        self.font_manager = font_manager
+        self.title_text = title_text
+        self.options = options # List of (text, action_id)
+        self.callback_func = callback_func
+        self.screen_width = screen_width
+        self.screen_height = screen_height
         self.buttons = []
-        self._setup_buttons()
+        self._create_buttons()
 
-    def _setup_buttons(self):
+    def _create_buttons(self):
         self.buttons.clear()
-        button_width, button_height = 250, 60
-        gap = 20
-        start_y = SCREEN_HEIGHT // 2 - (button_height * 3 + gap * 2) // 2
+        button_width = 200
+        button_height = 50
+        spacing = 20
+        total_height = len(self.options) * button_height + (len(self.options) - 1) * spacing
+        start_y = (self.screen_height - total_height) // 2
 
-        self.buttons.append(Button("開始遊戲", SCREEN_WIDTH // 2, start_y, button_width, button_height, FONT_MD, self.game.start_game))
-        self.buttons.append(Button("規則說明", SCREEN_WIDTH // 2, start_y + button_height + gap, button_width, button_height, FONT_MD, lambda: self.game.change_state(GameState.RULES)))
-        self.buttons.append(Button("結束遊戲", SCREEN_WIDTH // 2, start_y + (button_height + gap) * 2, button_width, button_height, FONT_MD, self.game.quit_game))
-
-    def handle_input(self, event):
-        for button in self.buttons:
-            button.handle_event(event)
-
-    def draw(self, screen):
-        screen.fill(BLACK)
-        title_surf = FONT_XL.render(self.game.game_name, True, WHITE)
-        title_rect = title_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 4))
-        screen.blit(title_surf, title_rect)
-
-        for button in self.buttons:
-            button.draw(screen)
-
-class RulesMenu(BaseState):
-    def __init__(self, game):
-        super().__init__(game)
-        self.back_button = Button("返回主選單", SCREEN_WIDTH // 2, SCREEN_HEIGHT - 80, 200, 50, FONT_MD, self.go_back)
-        self.rules_text = []
-
-    def enter(self, **kwargs):
-        # CRITICAL: kwargs.setdefault()
-        self.return_state = kwargs.setdefault('return_state', GameState.MAIN_MENU)
-        self.rules_text = self.game.game_data['game_rules']
-        if self.return_state == GameState.MAIN_MENU:
-             self.back_button.text = "返回主選單"
-        elif self.return_state == GameState.PAUSED:
-             self.back_button.text = "返回暫停選單"
-
-    def go_back(self):
-        self.game.change_state(self.return_state)
-
-    def handle_input(self, event):
-        self.back_button.handle_event(event)
-
-    def draw(self, screen):
-        screen.fill(BLACK)
-        title_surf = FONT_LG.render("遊戲規則", True, WHITE)
-        title_rect = title_surf.get_rect(center=(SCREEN_WIDTH // 2, 80))
-        screen.blit(title_surf, title_rect)
-
-        y_offset = 150
-        for line in self.rules_text:
-            text_surf = FONT_SM.render(line, True, WHITE)
-            text_rect = text_surf.get_rect(center=(SCREEN_WIDTH // 2, y_offset))
-            screen.blit(text_surf, text_rect)
-            y_offset += 30
-
-        self.back_button.draw(screen)
-
-class GameRunning(BaseState):
-    def __init__(self, game):
-        super().__init__(game)
-        # Game state elements will be managed by Game class, not here.
-        # This class primarily handles input and delegates updates/draws.
-
-    def handle_input(self, event):
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_p or event.key == pygame.K_ESCAPE:
-                self.game.change_state(GameState.PAUSED)
-        
-        # Player movement input
-        keys = pygame.key.get_pressed()
-        player_speed = self.game.player.speed
-        
-        move_x = 0
-        move_y = 0
-        if keys[pygame.K_a]: move_x -= 1
-        if keys[pygame.K_d]: move_x += 1
-        if keys[pygame.K_w]: move_y -= 1
-        if keys[pygame.K_s]: move_y += 1
-        
-        direction = Vector2(move_x, move_y)
-        if direction.length() > 0:
-            direction.normalize_ip()
-        self.game.player.velocity = direction * player_speed
-
-
-    def update(self, dt):
-        game = self.game
-        
-        # Update game timer
-        game.time_remaining = max(0, game.time_remaining - dt)
-        if game.time_remaining <= 0 and game.player.hp > 0:
-            game.change_state(GameState.GAME_OVER, victory=True, final_kills=game.kills, final_time=game.total_game_time_limit)
-            return
-
-        # Player update and knife firing
-        if game.player.update(dt): # Returns True if it's time to fire a knife
-            mouse_pos = pygame.mouse.get_pos()
-            # Convert mouse pos to world coordinates for knife direction calculation
-            world_mouse_pos = Vector2(mouse_pos) + game.camera_drawing_group.offset
-            knife_direction = world_mouse_pos - game.player.pos
-            
-            # Fire knife using object pool
-            knife_data = game.game_data['entities'][1]['variables'] # Assuming Knife is the 2nd entity
-            new_knife = game.knife_pool.get(
-                game.player.pos,
-                knife_direction,
-                game.player.knife_damage,
-                knife_data['flight_speed'],
-                knife_data['lifetime'],
-                knife_pool_ref=game.knife_pool # CRITICAL: Pass the pool itself here in `init`
+        for i, (text, action_id) in enumerate(self.options):
+            rect = pygame.Rect(
+                (self.screen_width - button_width) // 2,
+                start_y + i * (button_height + spacing),
+                button_width,
+                button_height
             )
+            button = Button(
+                rect,
+                text,
+                self.font_manager.get_font(24),
+                WHITE,
+                BLUE,
+                LIGHT_GRAY,
+                lambda aid=action_id: self.callback_func(aid) # Use lambda to capture action_id
+            )
+            self.buttons.append(button)
 
-        # Enemy spawner update
-        game.enemy_spawner.update(dt)
+    def draw(self, surface):
+        # Draw semi-transparent background overlay
+        overlay = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180)) # Dark transparent
+        surface.blit(overlay, (0, 0))
 
-        # Update all active sprites
-        for sprite in game.all_updatable_sprites:
-            if sprite.is_active:
-                sprite.update(dt)
+        # Draw title
+        title_font = self.font_manager.get_font(48)
+        title_surface = title_font.render(self.title_text, True, WHITE)
+        title_rect = title_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 4))
+        surface.blit(title_surface, title_rect)
 
-        # Collision detection (using CollisionManager)
-        # Player vs Enemy
-        game.collision_manager.apply_sprite_vs_group(game.player, game.enemies_collision_group, game.player_hit_enemy_callback)
-        # Knife vs Enemy
-        game.collision_manager.apply_group_vs_group(game.knives_collision_group, game.enemies_collision_group, game.knife_hit_enemy_callback)
-
-        # Check player death condition
-        if game.player.hp <= 0:
-            game.change_state(GameState.GAME_OVER, victory=False, final_kills=game.kills, final_time=game.total_game_time_limit - game.time_remaining)
-            return
-
-        # Check for player level up
-        # This checks if player.exp has reached/exceeded the threshold without adding more exp
-        #if game.player.gain_exp(0) == True:
-        #    game.change_state(GameState.LEVEL_UP)
-        #    return
-
-    def draw(self, screen):
-        game = self.game
-        game.camera_drawing_group.custom_draw(screen) # Draws background and sprites with offset/Y-sort
-
-        # Draw HUD
-        # HP Bar
-        hp_bar_width = 200
-        hp_bar_height = 20
-        hp_ratio = game.player.hp / game.player.max_hp
-        pygame.draw.rect(screen, RED, (10, 10, hp_bar_width, hp_bar_height), 2) # Outline
-        pygame.draw.rect(screen, RED, (10, 10, hp_bar_width * hp_ratio, hp_bar_height)) # Fill
-        hp_text = FONT_SM.render(f"HP: {int(game.player.hp)}/{int(game.player.max_hp)}", True, WHITE)
-        screen.blit(hp_text, (10 + hp_bar_width + 10, 10))
-
-        # EXP Bar
-        exp_bar_width = 200
-        exp_bar_height = 20
-        exp_ratio = game.player.exp / game.player.exp_to_level_up
-        pygame.draw.rect(screen, BLUE, (10, 40, exp_bar_width, exp_bar_height), 2) # Outline
-        pygame.draw.rect(screen, BLUE, (10, 40, exp_bar_width * exp_ratio, exp_bar_height)) # Fill
-        exp_text = FONT_SM.render(f"LVL {game.player.level} EXP: {int(game.player.exp)}/{int(game.player.exp_to_level_up)}", True, WHITE)
-        screen.blit(exp_text, (10 + exp_bar_width + 10, 40))
-
-        # Survival Timer
-        minutes = int(game.time_remaining // 60)
-        seconds = int(game.time_remaining % 60)
-        timer_text = FONT_MD.render(f"{minutes:02}:{seconds:02}", True, WHITE)
-        screen.blit(timer_text, (SCREEN_WIDTH - timer_text.get_width() - 10, 10))
-        
-        # Kills count
-        kills_text = FONT_SM.render(f"擊殺: {game.kills}", True, WHITE)
-        screen.blit(kills_text, (SCREEN_WIDTH - kills_text.get_width() - 10, 50))
-
-
-class PauseMenu(BaseState):
-    def __init__(self, game):
-        super().__init__(game)
-        self.buttons = []
-        self._setup_buttons()
-
-    def _setup_buttons(self):
-        self.buttons.clear()
-        button_width, button_height = 250, 60
-        gap = 20
-        start_y = SCREEN_HEIGHT // 2 - (button_height * 4 + gap * 3) // 2
-
-        self.buttons.append(Button("繼續遊戲", SCREEN_WIDTH // 2, start_y, button_width, button_height, FONT_MD, lambda: self.game.change_state(GameState.GAME_RUNNING)))
-        self.buttons.append(Button("重新開始", SCREEN_WIDTH // 2, start_y + button_height + gap, button_width, button_height, FONT_MD, lambda: self.game.start_game(reset=True)))
-        self.buttons.append(Button("規則說明", SCREEN_WIDTH // 2, start_y + (button_height + gap) * 2, button_width, button_height, FONT_MD, lambda: self.game.change_state(GameState.RULES, return_state=GameState.PAUSED)))
-        self.buttons.append(Button("返回主選單", SCREEN_WIDTH // 2, start_y + (button_height + gap) * 3, button_width, button_height, FONT_MD, lambda: self.game.change_state(GameState.MAIN_MENU)))
-
-    def handle_input(self, event):
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_p or event.key == pygame.K_ESCAPE:
-                self.game.change_state(GameState.GAME_RUNNING)
         for button in self.buttons:
-            button.handle_event(event)
+            button.draw(surface)
+
+    def handle_event(self, event):
+        for button in self.buttons:
+            if button.handle_event(event):
+                return True # Button was clicked
+        return False
+
+class RulesScreen:
+    def __init__(self, font_manager, game_rules, screen_width, screen_height, return_callback):
+        self.font_manager = font_manager
+        self.game_rules = game_rules
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        self.return_callback = return_callback
+        self.back_button = Button(
+            pygame.Rect((screen_width - 150) // 2, screen_height - 100, 150, 40),
+            "返回",
+            font_manager.get_font(20),
+            WHITE, BLUE, LIGHT_GRAY,
+            self.return_callback
+        )
+
+    def draw(self, surface):
+        overlay = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        surface.blit(overlay, (0, 0))
+
+        title_font = self.font_manager.get_font(40)
+        title_surface = title_font.render("遊戲規則", True, WHITE)
+        title_rect = title_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 6))
+        surface.blit(title_surface, title_rect)
+
+        text_font = self.font_manager.get_font(20)
+        y_offset = title_rect.bottom + 30
+        for rule in self.game_rules:
+            text_surface = text_font.render(rule, True, WHITE)
+            text_rect = text_surface.get_rect(midtop=(self.screen_width // 2, y_offset))
+            surface.blit(text_surface, text_rect)
+            y_offset += text_rect.height + 10
+        
+        self.back_button.draw(surface)
+
+    def handle_event(self, event):
+        if self.back_button.handle_event(event):
+            return True
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.return_callback()
+            return True
+        return False
+
+# --- 遊戲實體 ---
+class Player(GameSprite):
+    def __init__(self, x, y, platforms_group, player_config, gravity_val):
+        super().__init__(x=x, y=y, width=40, height=40, image_path="assets/player.png", z_index=10)
+        self.color = (0, 128, 255) # For internal use if no image
+        self.platforms_group = platforms_group
+        self.gravity = gravity_val
+
+        # Player Physics Parameters (from JSON)
+        self.max_horizontal_speed = player_config["max_horizontal_speed"]
+        self.jump_force = player_config["jump_force"] # Negative for upwards
+        self.horizontal_acceleration = player_config["horizontal_acceleration"]
+        self.ground_friction_coefficient = player_config["ground_friction_coefficient"]
+        self.air_damping_coefficient = player_config["air_damping_coefficient"]
+        self.jump_buffer_time = player_config["jump_buffer_time"] # seconds
+        self.coyote_time = player_config["coyote_time"] # seconds
+        self.max_health = player_config["initial_health"]
+
+        self.velocity = pygame.math.Vector2(0, 0)
+        self.on_ground = False
+        self.health = self.max_health
+        self.facing_right = True
+        self.jump_buffer_timer = 0
+        self.coyote_timer = 0
+        self.can_jump = False
+        self.invincible_timer = 0 # For temporary invincibility after taking damage
+
+    def handle_input(self, keys, dt):
+        horizontal_input = 0
+        if (keys[pygame.K_a] or keys[pygame.K_LEFT]):
+            horizontal_input -= 1
+            self.facing_right = False
+        if (keys[pygame.K_d] or keys[pygame.K_RIGHT]):
+            horizontal_input += 1
+            self.facing_right = True
+
+        # Apply horizontal acceleration
+        if horizontal_input != 0:
+            self.velocity.x += horizontal_input * self.horizontal_acceleration * dt
+            # Clamp horizontal speed
+            self.velocity.x = max(-self.max_horizontal_speed, min(self.velocity.x, self.max_horizontal_speed))
+        else:
+            # Apply friction/damping
+            if self.on_ground:
+                # Use pow for more realistic exponential decay
+                self.velocity.x *= math.pow(self.ground_friction_coefficient, dt * 60) # Multiply by 60 for FPS-independent decay
+            else:
+                self.velocity.x *= math.pow(self.air_damping_coefficient, dt * 60) # Slower decay in air
+
+        # Jump buffer logic
+        if (keys[pygame.K_SPACE] or keys[pygame.K_UP]):
+            if self.jump_buffer_timer <= 0: # Only start if not already counting down from a previous press
+                self.jump_buffer_timer = self.jump_buffer_time 
+        
+        # Actual jump execution
+        if self.jump_buffer_timer > 0 and self.can_jump:
+            self.velocity.y = self.jump_force
+            self.on_ground = False
+            self.coyote_timer = 0 # Consume coyote time on successful jump
+            self.jump_buffer_timer = 0 # Consume jump buffer on successful jump
+
+    def _move_and_collide(self, dt):
+        # --- [X 軸處理] ---
+        # 1. 先只移動 X
+        self.pos.x += self.velocity.x * dt
+        self.rect.centerx = round(self.pos.x)
+        
+        # 2. 檢查 X 軸碰撞 (這時候 Y 還沒動，所以不會陷進地板)
+        collisions_x = pygame.sprite.spritecollide(self, self.platforms_group, False)
+        for platform in collisions_x:
+            if self.velocity.x > 0: # 向右撞牆
+                self.rect.right = platform.rect.left
+            elif self.velocity.x < 0: # 向左撞牆
+                self.rect.left = platform.rect.right
+            self.pos.x = self.rect.centerx # 碰撞後修正浮點數座標
+            self.velocity.x = 0
+
+        # --- [Y 軸處理] ---
+        # 3. 再移動 Y
+        self.pos.y += self.velocity.y * dt
+        self.rect.centery = round(self.pos.y)
+        
+        # 4. 檢查 Y 軸碰撞
+        self.on_ground = False # 先假設在空中
+        collisions_y = pygame.sprite.spritecollide(self, self.platforms_group, False)
+        for platform in collisions_y:
+            if self.velocity.y > 0: # 掉落地板
+                self.rect.bottom = platform.rect.top
+                self.on_ground = True
+                self.coyote_timer = self.coyote_time 
+            elif self.velocity.y < 0: # 頂到天花板
+                self.rect.top = platform.rect.bottom
+            self.pos.y = self.rect.centery # 碰撞後修正浮點數座標
+            self.velocity.y = 0
+
+        # 更新跳躍狀態
+        self.can_jump = self.on_ground or self.coyote_timer > 0
+
+    def update_physics(self, dt):
+        # Apply gravity
+        self.velocity.y += self.gravity * dt
+        
+
+        self._move_and_collide(dt)
+        # Apply velocity to position
+        #self.pos += self.velocity * dt
+
+        # Update rect position (rounded for display)
+        #self.rect.center = round(self.pos.x), round(self.pos.y)
+
+    def check_platform_collisions(self):
+        # Store original rect position for collision resolution
+        original_rect_x = self.rect.centerx
+        original_rect_y = self.rect.centery
+
+        # Move X first
+        self.rect.centerx = round(self.pos.x)
+        collisions_x = pygame.sprite.spritecollide(self, self.platforms_group, False)
+        for platform in collisions_x:
+            if self.velocity.x > 0: # Moving right
+                self.rect.right = platform.rect.left
+            elif self.velocity.x < 0: # Moving left
+                self.rect.left = platform.rect.right
+            self.pos.x = self.rect.centerx # Synchronize pos with rect after collision
+            self.velocity.x = 0
+
+        # Move Y next
+        self.rect.centery = round(self.pos.y)
+        self.on_ground = False # Assume not on ground unless proven otherwise
+        collisions_y = pygame.sprite.spritecollide(self, self.platforms_group, False)
+        for platform in collisions_y:
+            if self.velocity.y > 0: # Falling (hit ground)
+                self.rect.bottom = platform.rect.top
+                self.on_ground = True
+                self.coyote_timer = self.coyote_time # Reset coyote time only if truly landing
+            elif self.velocity.y < 0: # Jumping (hit ceiling)
+                self.rect.top = platform.rect.bottom
+            self.pos.y = self.rect.centery # Synchronize pos with rect after collision
+            self.velocity.y = 0
+
+        # Update can_jump state based on on_ground and coyote time
+        # Do not decrement coyote_timer here; let the main update loop handle it once per frame.
+        self.can_jump = self.on_ground or self.coyote_timer > 0 # Allow jump if on ground OR in coyote time
+
+    def take_damage(self, amount):
+        if self.invincible_timer <= 0:
+            self.health -= amount
+            self.invincible_timer = 1.0 # 1 second invincibility
+            # No need to trigger game over here, main game loop checks player.health
 
     def update(self, dt):
-        # Game logic should be frozen in PAUSED state
-        pass
-
-    def draw(self, screen):
-        # Draw previous game state (blurred/darkened)
-        self.game.state_handlers[GameState.GAME_RUNNING].draw(screen)
-
-        # Overlay
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill(TRANSPARENT_BLACK)
-        screen.blit(overlay, (0, 0))
-
-        title_surf = FONT_XL.render("遊戲暫停", True, WHITE)
-        title_rect = title_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 4))
-        screen.blit(title_surf, title_rect)
-
-        for button in self.buttons:
-            button.draw(screen)
-
-class LevelUpMenu(BaseState):
-    def __init__(self, game):
-        super().__init__(game)
-        self.upgrade_buttons = []
-        self.player_upgrades_data = self.game.game_data['entities'][0]['variables']['upgrade_options']
-
-    def enter(self, **kwargs):
-        self._setup_upgrade_options()
-
-    def _setup_upgrade_options(self):
-        self.upgrade_buttons.clear()
+        # Decrement timers
+        if self.jump_buffer_timer > 0:
+            self.jump_buffer_timer -= dt
+        if not self.on_ground and self.coyote_timer > 0:
+            self.coyote_timer -= dt
         
-        available_upgrades = list(self.player_upgrades_data.keys())
-        # Randomly pick 3 unique upgrades
-        selected_upgrades = random.sample(available_upgrades, min(3, len(available_upgrades)))
+        # Decrement invincibility timer
+        if self.invincible_timer > 0:
+            self.invincible_timer -= dt
 
-        button_width, button_height = 300, 80
-        gap = 30
-        start_x = SCREEN_WIDTH // 2 - (button_width * 3 + gap * 2) // 2
-        start_y = SCREEN_HEIGHT // 2 + 50
+        self.update_physics(dt)
+        #self.check_platform_collisions() # Must happen after physics update for position
 
-        for i, upgrade_key in enumerate(selected_upgrades):
-            text = self._get_upgrade_text(upgrade_key)
-            action = lambda key=upgrade_key: self._select_upgrade(key)
-            self.upgrade_buttons.append(Button(text, start_x + (button_width + gap) * i + button_width // 2, start_y, button_width, button_height, FONT_MD, action))
+        # Visual feedback for invincibility (blinking)
+        if self.invincible_timer > 0:
+            if int(self.invincible_timer * 10) % 2 == 0:
+                self.image.set_alpha(100) # Make semi-transparent
+            else:
+                self.image.set_alpha(255)
+        else:
+            if self.image.get_alpha() != 255: # Only reset if not already opaque to avoid constant calls
+                self.image.set_alpha(255) # Fully opaque when not invincible
 
-    def _get_upgrade_text(self, upgrade_key):
-        if upgrade_key == "damage_increase":
-            return f"強力飛刀 (+{self.player_upgrades_data[upgrade_key]} 傷害)"
-        elif upgrade_key == "attack_speed_interval_decrease":
-            return f"極速投擲 (-{self.player_upgrades_data[upgrade_key]:.1f}s 攻擊間隔)"
-        elif upgrade_key == "health_recovery_percentage":
-            return f"生命恢復 (+{int(self.player_upgrades_data[upgrade_key]*100)}% 生命)"
-        return upgrade_key # Fallback
+    def draw_hud(self, surface, font_manager):
+        health_font = font_manager.get_font(24)
+        health_text = f"HP: {self.health}/{self.max_health}"
+        health_surface = health_font.render(health_text, True, WHITE)
+        surface.blit(health_surface, (10, 10))
 
-    def _select_upgrade(self, upgrade_key):
-        self.game.player.apply_upgrade(upgrade_key)
-        self.game.change_state(GameState.GAME_RUNNING)
+class Platform(GameSprite):
+    def __init__(self, x, y, width, height):
+        # Create a simple colored rect image
+        image = pygame.Surface((width, height))
+        image.fill((100, 200, 100)) # Greenish platform
+        super().__init__(x=x, y=y, width=width, height=height, image_surface=image, z_index=0)
 
-    def handle_input(self, event):
-        for button in self.upgrade_buttons:
-            button.handle_event(event)
+class SpikeTrap(GameSprite):
+    def __init__(self):
+        # Initialize GameSprite with dummy values for pooled objects, as reset_state will set actual values
+        super().__init__(x=0, y=0, width=40, height=40, image_path="assets/spike_trap.png", z_index=5)
+        self.start_pos = pygame.math.Vector2(0, 0)
+        self.end_pos = pygame.math.Vector2(0, 0)
+        self.movement_speed = 0
+        self.direction = 1 # 1 for moving towards end_pos, -1 for moving towards start_pos
+        self.reset_state() # Call reset_state to ensure default values are set, will be overwritten by pool.get()
+
+    def reset_state(self, x=0, y=0, width=40, height=40, movement_range=0, movement_speed=0):
+        # Configure the sprite for reuse
+        self.pos.x = x
+        self.pos.y = y
+        self.rect.topleft = (round(self.pos.x), round(self.pos.y))
+        
+        # Ensure image is reloaded/scaled in case it was modified (e.g., alpha)
+        self.image = pygame.image.load("assets/spike_trap.png").convert_alpha()
+        self.image = pygame.transform.scale(self.image, (width, height))
+        self.original_image = self.image.copy() # Reset original_image
+        self.image.set_alpha(255) # Ensure full opacity
+        
+        self.start_pos = pygame.math.Vector2(x, y)
+        self.end_pos = pygame.math.Vector2(x + movement_range, y) # Horizontal movement
+        self.movement_speed = movement_speed
+        self.direction = 1 # Reset direction
+        
+        # Update rect size to match new dimensions
+        self.rect.width = width
+        self.rect.height = height
 
     def update(self, dt):
-        # Game logic should be frozen
-        pass
+        # Update position based on direction and speed
+        self.pos.x += self.movement_speed * self.direction * dt
 
-    def draw(self, screen):
-        # Draw previous game state (blurred/darkened)
-        self.game.state_handlers[GameState.GAME_RUNNING].draw(screen)
+        # Check for turning points
+        if self.direction == 1 and self.pos.x >= self.end_pos.x:
+            self.direction = -1
+            self.pos.x = self.end_pos.x # Snap to boundary to prevent overshooting
+        elif self.direction == -1 and self.pos.x <= self.start_pos.x:
+            self.direction = 1
+            self.pos.x = self.start_pos.x # Snap to boundary
 
-        # Overlay
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill(TRANSPARENT_BLACK)
-        screen.blit(overlay, (0, 0))
+        self.rect.center = round(self.pos.x), round(self.pos.y)
 
-        title_surf = FONT_XL.render("選擇升級", True, YELLOW)
-        title_rect = title_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 4))
-        screen.blit(title_surf, title_rect)
+class Flag(GameSprite):
+    def __init__(self, x, y):
+        super().__init__(x=x, y=y, width=50, height=80, image_path="assets/flag.png", z_index=5)
+        # Redundant initializations removed as GameSprite handles them
 
-        for button in self.upgrade_buttons:
-            button.draw(screen)
-
-class GameOverMenu(BaseState):
-    def __init__(self, game):
-        super().__init__(game)
-        self.buttons = []
-        self.victory_status = False
-        self.final_kills = 0
-        self.final_time = 0.0
-        self._setup_buttons()
-
-    def _setup_buttons(self):
-        self.buttons.clear()
-        button_width, button_height = 250, 60
-        gap = 20
-        start_y = SCREEN_HEIGHT // 2 + 80
-
-        self.buttons.append(Button("重新開始", SCREEN_WIDTH // 2, start_y, button_width, button_height, FONT_MD, lambda: self.game.start_game(reset=True)))
-        self.buttons.append(Button("返回主選單", SCREEN_WIDTH // 2, start_y + button_height + gap, button_width, button_height, FONT_MD, lambda: self.game.change_state(GameState.MAIN_MENU)))
-
-    def enter(self, **kwargs):
-        # CRITICAL: kwargs.setdefault()
-        self.victory_status = kwargs.setdefault('victory', False)
-        self.final_kills = kwargs.setdefault('final_kills', 0)
-        self.final_time = kwargs.setdefault('final_time', 0.0)
-        print(f"Game Over. Victory: {self.victory_status}, Kills: {self.final_kills}, Time: {self.final_time:.2f}s")
-
-
-    def handle_input(self, event):
-        for button in self.buttons:
-            button.handle_event(event)
-
-    def update(self, dt):
-        pass
-
-    def draw(self, screen):
-        screen.fill(BLACK)
-        
-        status_text = "勝利！" if self.victory_status else "遊戲結束！"
-        status_color = GREEN if self.victory_status else RED
-        
-        title_surf = FONT_XL.render(status_text, True, status_color)
-        title_rect = title_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 4))
-        screen.blit(title_surf, title_rect)
-
-        # Display stats
-        stats_y = SCREEN_HEIGHT // 2 - 30
-        kills_surf = FONT_MD.render(f"擊殺數: {self.final_kills}", True, WHITE)
-        kills_rect = kills_surf.get_rect(center=(SCREEN_WIDTH // 2, stats_y))
-        screen.blit(kills_surf, kills_rect)
-
-        time_surf = FONT_MD.render(f"生存時間: {int(self.final_time)} 秒", True, WHITE)
-        time_rect = time_surf.get_rect(center=(SCREEN_WIDTH // 2, stats_y + 40))
-        screen.blit(time_surf, time_rect)
-
-        for button in self.buttons:
-            button.draw(screen)
-
-# --- Game Class ---
+# --- 遊戲主類別 ---
 class Game:
-    def __init__(self, game_data_path="game_plan.json"):
-        # pygame.init() # Moved to global scope at the very top
-        pygame.display.set_caption("刀鋒生存者 (Blade Survivor)")
+    def __init__(self):
+        pygame.init()
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        pygame.display.set_caption("方塊跳躍者 (Block Jumper)")
         self.clock = pygame.time.Clock()
-        self.running = True
-        self.game_active = False # CRITICAL: Auto-test hook, default to False
+        self.font_manager = FontManager()
 
-        # Load game data from JSON
-        with open(game_data_path, 'r', encoding='utf-8') as f:
-            self.game_data = json.load(f)
-        self.game_name = self.game_data['game_name']
-        self.total_game_time_limit = self.game_data['victory_condition']['value']
+        self.game_active = False  # Auto-Test Hook: Default to False for menu
+        self.current_state = GameState.MENU
 
-        # Game state management
-        self.current_state = GameState.MAIN_MENU
-        self.state_handlers = {
-            GameState.MAIN_MENU: MainMenu(self),
-            GameState.RULES: RulesMenu(self),
-            GameState.GAME_RUNNING: GameRunning(self),
-            GameState.PAUSED: PauseMenu(self),
-            GameState.LEVEL_UP: LevelUpMenu(self),
-            GameState.GAME_OVER: GameOverMenu(self),
-        }
-
-        # Game entities and groups (initialized in reset_game)
-        self.player = None
-        self.knife_pool = None
-        self.enemy_pool = None
-        self.enemy_spawner = None
-
-        self.knives_collision_group = pygame.sprite.Group() # For collision checks
-        self.enemies_collision_group = pygame.sprite.Group() # For collision checks
-        self.all_updatable_sprites = pygame.sprite.Group() # All sprites that need update() called
-        self.camera_drawing_group = None # Initialized after player is created and is the actual CameraScrollGroup
-
-        self.collision_manager = CollisionManager()
-
-        self.time_remaining = 0.0
-        self.kills = 0
-
-    def reset_game(self):
-        print("Resetting game...")
-        self.knives_collision_group.empty()
-        self.enemies_collision_group.empty()
-        self.all_updatable_sprites.empty()
-        if self.camera_drawing_group: # Clear the camera group if it exists
-            self.camera_drawing_group.empty()
+        # Load JSON config
+        self.config = json.loads(json_data_raw)
+        self.game_rules_list = self.config["game_rules"]
+        self.entities_config = self.config["entities"]
         
-        # Player setup
-        player_data = self.game_data['entities'][0]['variables']
-        initial_player_pos = Vector2(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
-        self.player = Player(self.game_data, initial_player_pos)
-        self.all_updatable_sprites.add(self.player)
+        # Extract specific entity configurations for easier access
+        self.player_config_data = self.entities_config[0]["variables"]
+        self.spiketrap_config_data = self.entities_config[1]["variables"]
+        self.game_world_config = self.entities_config[2]["variables"]
 
-        # Camera setup (CRITICAL: initial camera)
-        self.camera_drawing_group = CameraScrollGroup(SCREEN_WIDTH, SCREEN_HEIGHT, self.player, culling_margin=100)
-        self.camera_drawing_group.add(self.player) # Player is drawn by camera
+        # Game World Parameters
+        self.gravity = self.game_world_config["gravity_acceleration"]
+        self.level_width = self.game_world_config["level_width_pixels"]
+        self.level_height = self.game_world_config["level_height_pixels"]
 
-        # Object Pools (CRITICAL: pool and group passed to entities' __init__)
-        # Knife needs to know its collision group, updatable group, and camera group
-        self.knife_pool = ObjectPool(Knife, 50, 
-                                     self.knives_collision_group, 
-                                     self.all_updatable_sprites, 
-                                     self.camera_drawing_group)
-        # Enemy needs to know its collision group, updatable group, and camera group
-        self.enemy_pool = ObjectPool(Enemy, 50, 
-                                     self.enemies_collision_group, 
-                                     self.all_updatable_sprites, 
-                                     self.camera_drawing_group)
+        # Initialize common game components
+        self.collision_manager = CollisionManager()
+        pygame.mouse.set_visible(True) # UI & Display: Cursor visible
 
-        self.enemy_spawner = EnemySpawner(self.game_data, self.enemy_pool, self.enemies_collision_group, self.player)
+        self._init_game_assets()
+        self._init_menus()
 
-        # Set ground texture (optional, for visual polish)
-        ground_tile_path = os.path.join('assets', 'ground_tile.png')
-        self.camera_drawing_group.set_ground_texture(ground_tile_path)
+        self.player = None
+        self.platforms = pygame.sprite.Group()
+        self.spike_traps = pygame.sprite.Group()
+        self.flags = pygame.sprite.Group()
+        # self.all_sprites is not strictly needed for update/draw if CameraScrollGroup does both.
+        # If specific updates are not done via group.update(), explicit calls are necessary.
+        # Here, player.update() and spike_traps.update() are called explicitly.
 
-        self.time_remaining = self.total_game_time_limit
-        self.kills = 0
+        self.camera_group = CameraScrollGroup(
+            SCREEN_WIDTH, SCREEN_HEIGHT,
+            self.level_width,
+            self.level_height,
+            margin=100,
+            bg_image_path="assets/background.png" # Placeholder background image
+        )
 
-    def start_game(self, reset=False):
-        if reset or self.player is None:
+        # ObjectPool for SpikeTraps
+        self.spike_trap_pool = ObjectPool(SpikeTrap, 5) # Initial size, no specific args here
+
+    def _init_game_assets(self):
+        # Create dummy assets if not exist
+        asset_paths = {
+            "assets/player.png": (40, 40),
+            "assets/spike_trap.png": (40, 40),
+            "assets/platform_placeholder.png": (1, 1), # Dummy, platforms are generated
+            "assets/flag.png": (50, 80),
+            "assets/background.png": (SCREEN_WIDTH, SCREEN_HEIGHT) # Needs to be larger or tiled
+        }
+        for path, size in asset_paths.items():
+            try:
+                with open(path, 'rb') as f: pass
+            except FileNotFoundError:
+                print(f"Asset not found: {path}. Creating a dummy placeholder.")
+                dummy_surface = pygame.Surface(size)
+                if "player" in path: dummy_surface.fill(BLUE)
+                elif "spike" in path: dummy_surface.fill(RED)
+                elif "flag" in path: dummy_surface.fill(GREEN)
+                elif "background" in path: dummy_surface.fill((135, 206, 235)) # Sky blue
+                else: dummy_surface.fill(GRAY)
+                # Create 'assets' directory if it doesn't exist
+                import os
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                pygame.image.save(dummy_surface, path)
+
+    def _init_menus(self):
+        # Main Menu
+        main_menu_options = [
+            ("開始遊戲", "start"),
+            ("遊戲規則", "rules"),
+            ("離開遊戲", "exit")
+        ]
+        self.main_menu = Menu(self.font_manager, "方塊跳躍者", main_menu_options, self._main_menu_callback, SCREEN_WIDTH, SCREEN_HEIGHT)
+
+        # Pause Menu
+        pause_menu_options = [
+            ("繼續遊戲", "continue"),
+            ("重新開始", "restart"),
+            ("遊戲規則", "rules"),
+            ("返回主選單", "main_menu")
+        ]
+        self.pause_menu = Menu(self.font_manager, "遊戲暫停", pause_menu_options, self._pause_menu_callback, SCREEN_WIDTH, SCREEN_HEIGHT)
+
+        # Win/Lose Screen
+        win_lose_options = [
+            ("重新開始", "restart"),
+            ("返回主選單", "main_menu")
+        ]
+        self.win_menu = Menu(self.font_manager, "恭喜！你成功抵達終點！", win_lose_options, self._win_lose_menu_callback, SCREEN_WIDTH, SCREEN_HEIGHT)
+        self.lose_menu = Menu(self.font_manager, "遊戲結束！你的方塊碎了！", win_lose_options, self._win_lose_menu_callback, SCREEN_WIDTH, SCREEN_HEIGHT)
+
+        # Rules Screen
+        self.rules_screen = RulesScreen(self.font_manager, self.game_rules_list, SCREEN_WIDTH, SCREEN_HEIGHT, self._return_from_rules)
+        self.previous_state_before_rules = GameState.MENU # To know where to return to
+
+    def _main_menu_callback(self, action):
+        if action == "start":
+            self.change_state(GameState.PLAYING)
             self.reset_game()
-        self.change_state(GameState.GAME_RUNNING)
+        elif action == "rules":
+            self.previous_state_before_rules = GameState.MENU
+            self.change_state(GameState.RULES)
+        elif action == "exit":
+            self.running = False
 
-    def quit_game(self):
-        self.running = False
+    def _pause_menu_callback(self, action):
+        if action == "continue":
+            self.change_state(GameState.PLAYING)
+        elif action == "restart":
+            self.change_state(GameState.PLAYING)
+            self.reset_game()
+        elif action == "rules":
+            self.previous_state_before_rules = GameState.PAUSED
+            self.change_state(GameState.RULES)
+        elif action == "main_menu":
+            self.change_state(GameState.MENU)
+
+    def _win_lose_menu_callback(self, action):
+        if action == "restart":
+            self.change_state(GameState.PLAYING)
+            self.reset_game()
+        elif action == "main_menu":
+            self.change_state(GameState.MENU)
+
+    def _return_from_rules(self):
+        self.change_state(self.previous_state_before_rules)
 
     def change_state(self, new_state, **kwargs):
-        # CRITICAL: kwargs.setdefault()
-        if hasattr(self.state_handlers.get(self.current_state), 'exit'):
-            self.state_handlers[self.current_state].exit()
-
-        prev_state = self.current_state # Store previous state for rules menu return
-        self.current_state = new_state
-        print(f"Changing state to: {new_state.name} with kwargs: {kwargs}")
-
-        # Set default values for parameters depending on the new state
-        if new_state == GameState.GAME_OVER:
-            kwargs.setdefault('victory', False)
-            kwargs.setdefault('final_kills', self.kills)
-            kwargs.setdefault('final_time', self.total_game_time_limit - self.time_remaining)
+        # 狀態機安全: 使用 kwargs.setdefault()
+        current_state = self.current_state
+        if new_state == GameState.PLAYING:
+            kwargs.setdefault('message', '遊戲開始！')
+        elif new_state == GameState.PAUSED:
+            kwargs.setdefault('message', '遊戲已暫停。')
+        elif new_state == GameState.WIN:
+            kwargs.setdefault('message', '恭喜獲勝！')
+        elif new_state == GameState.LOSE:
+            kwargs.setdefault('message', '遊戲失敗！')
         elif new_state == GameState.RULES:
-            kwargs.setdefault('return_state', prev_state) # Default to previous state if not specified
+            kwargs.setdefault('message', '查看規則。')
+        elif new_state == GameState.MENU:
+            kwargs.setdefault('message', '返回主選單。')
+
+        print(f"Changing state from {current_state} to {new_state}. Message: {kwargs.get('message')}")
+        self.current_state = new_state
+
+    def reset_game(self):
+        # Clear all existing sprites
+        self.platforms.empty()
+        self.spike_traps.empty()
+        self.flags.empty()
+        self.camera_group.empty() # Also clear camera group as it holds all rendered sprites
+
+        # Release all currently used spike traps back to the pool
+        # Iterate over a copy of the group to avoid issues with modification during iteration
+        for trap in list(self.spike_traps):
+            self.spike_trap_pool.release(trap)
+        self.spike_traps.empty() # Ensure group is empty after releasing
+
+        # Create level entities
+        self._create_level()
+
+        # Player setup
+        player_start_x = 100
+        player_start_y = self.level_height - 150 # Start player above the first platform
         
-        if hasattr(self.state_handlers.get(new_state), 'enter'):
-            self.state_handlers[new_state].enter(**kwargs)
+        self.player = Player(player_start_x, player_start_y, self.platforms, self.player_config_data, self.gravity)
+        self.camera_group.add(self.player)
 
-    def player_hit_enemy_callback(self, player, enemy):
-        if player.is_active and enemy.is_active: # Only process if both are active
-            if player.take_damage(enemy.collision_damage):
-                # Player was defeated
-                self.change_state(GameState.GAME_OVER, victory=False, final_kills=self.kills, final_time=self.total_game_time_limit - self.time_remaining)
-            
-    def knife_hit_enemy_callback(self, knife, enemy):
-        if knife.is_active and enemy.is_active: # Ensure both are still active before processing
-            if enemy.take_damage(knife.damage):
-                # Enemy was defeated
-                self.kills += 1
-                if self.player.gain_exp(enemy.exp_drop):
-                    # Player leveled up, state change handled by Player.gain_exp
-                    self.change_state(GameState.LEVEL_UP)
-                    pass
-            knife.die() # Release knife back to pool
+        # Add other entities to camera group for rendering
+        self.camera_group.add(self.platforms, self.spike_traps, self.flags)
 
-    def handle_input(self):
+    def _create_level(self):
+        level_platforms = [
+            (50, self.level_height - 100, 200, 40), # Starting platform
+            (300, self.level_height - 200, 150, 40),
+            (600, self.level_height - 150, 200, 40),
+            (900, self.level_height - 250, 100, 40),
+            (1200, self.level_height - 300, 300, 40),
+            (1600, self.level_height - 200, 100, 40),
+            (1900, self.level_height - 100, 200, 40),
+            (2200, self.level_height - 350, 250, 40),
+            (2600, self.level_height - 250, 150, 40),
+            (3000, self.level_height - 150, 300, 40), # Platform before flag
+            (self.level_width - 200, self.level_height - 100, 100, 40) # Small platform for flag
+        ]
+        for x, y, w, h in level_platforms:
+            platform = Platform(x, y, w, h)
+            self.platforms.add(platform)
+
+        level_spike_traps = [
+            (400, self.level_height - 180, 40, 40, 100), # x, y, w, h, movement_range
+            (1000, self.level_height - 230, 40, 40, 150),
+            (1700, self.level_height - 200, 40, 40, 200),
+            (2300, self.level_height - 330, 40, 40, 100)
+        ]
+        # For each trap, get from pool and add to group
+        trap_speed = self.spiketrap_config_data["movement_speed"] # from JSON
+        for x, y, w, h, rng in level_spike_traps:
+            spike = self.spike_trap_pool.get(x=x, y=y, width=w, height=h, movement_range=rng, movement_speed=trap_speed)
+            self.spike_traps.add(spike)
+
+        # Victory Flag
+        flag_x = self.level_width - 100 # Position it slightly left of max width
+        flag_y = self.level_height - 180 # Adjust Y to be on the last platform
+        flag = Flag(flag_x, flag_y)
+        self.flags.add(flag)
+
+    def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
-            
-            # Delegate input handling to current state handler
-            self.state_handlers[self.current_state].handle_input(event)
+
+            if self.current_state == GameState.MENU:
+                self.main_menu.handle_event(event)
+            elif self.current_state == GameState.PAUSED:
+                self.pause_menu.handle_event(event)
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    self.change_state(GameState.PLAYING)
+            elif self.current_state == GameState.RULES:
+                self.rules_screen.handle_event(event)
+            elif self.current_state == GameState.WIN:
+                self.win_menu.handle_event(event)
+            elif self.current_state == GameState.LOSE:
+                self.lose_menu.handle_event(event)
+            elif self.current_state == GameState.PLAYING:
+                if event.type == pygame.KEYDOWN and (event.key == pygame.K_p or event.key == pygame.K_ESCAPE):
+                    self.change_state(GameState.PAUSED)
             
     def update(self, dt):
-        # Delegate update logic to current state handler
-        self.state_handlers[self.current_state].update(dt)
+        if self.current_state == GameState.PLAYING:
+            keys = pygame.key.get_pressed()
+            self.player.handle_input(keys, dt)
+            self.player.update(dt) # Player's internal physics and collision checks
+
+            self.spike_traps.update(dt) # Update spike traps movement
+
+            # Collision detection (player vs. traps, player vs. flag)
+            # Player vs SpikeTraps
+            if self.player.invincible_timer <= 0: # Only check collision if not invincible
+                self.collision_manager.apply_sprite_vs_group(
+                    self.player, self.spike_traps, self._on_player_spike_collision
+                )
+
+            # Player vs Flag
+            self.collision_manager.apply_sprite_vs_group(
+                self.player, self.flags, self._on_player_flag_collision
+            )
+
+            # Check game over conditions
+            if self.player.health <= 0:
+                self.change_state(GameState.LOSE)
+
+    def _on_player_spike_collision(self, player, spike):
+        player.take_damage(self.spiketrap_config_data["damage_per_hit"])
+        # Optionally, knockback player
+        if player.facing_right:
+            player.velocity.x = -150
+        else:
+            player.velocity.x = 150
+        player.velocity.y = -200 # Upwards knockback
+
+    def _on_player_flag_collision(self, player, flag):
+        self.change_state(GameState.WIN)
 
     def draw(self):
-        # Delegate drawing logic to current state handler
-        self.state_handlers[self.current_state].draw(self.screen)
+        self.screen.fill(BLACK) # Clear screen
+
+        if self.current_state == GameState.PLAYING:
+            self.camera_group.custom_draw(self.screen, self.player)
+            self.player.draw_hud(self.screen, self.font_manager)
+        elif self.current_state == GameState.MENU:
+            self.main_menu.draw(self.screen)
+        elif self.current_state == GameState.PAUSED:
+            # Draw game state behind menu
+            self.camera_group.custom_draw(self.screen, self.player)
+            self.player.draw_hud(self.screen, self.font_manager)
+            self.pause_menu.draw(self.screen)
+        elif self.current_state == GameState.RULES:
+            # Draw underlying menu if coming from there, or a basic background
+            if self.previous_state_before_rules == GameState.PAUSED:
+                self.camera_group.custom_draw(self.screen, self.player)
+                self.player.draw_hud(self.screen, self.font_manager)
+            self.rules_screen.draw(self.screen)
+        elif self.current_state == GameState.WIN:
+            self.win_menu.draw(self.screen)
+        elif self.current_state == GameState.LOSE:
+            self.lose_menu.draw(self.screen)
+
         pygame.display.flip()
 
     def run(self):
-        # CRITICAL: Auto-test hook
+        self.running = True
+        
+        # Auto-Test Hook: Skip menu if game_active is True
         if self.game_active:
-            self.start_game() # Skip main menu and start directly
+            print("Auto-test mode: Skipping menu, starting game directly.")
+            self.change_state(GameState.PLAYING)
+            self.reset_game()
+        else:
+            self.change_state(GameState.MENU) # Ensure we start in menu if not auto-test
 
         while self.running:
-            # CRITICAL: Delta Time clamping
-            dt = min(self.clock.tick(FPS) / 1000.0, 0.05) # Cap dt at 0.05 seconds (20 FPS minimum effective)
-
-            self.handle_input()
-            self.update(dt) # All states have an update method, even if empty to freeze logic.
+            raw_dt = self.clock.tick(FPS) / 1000.0 # Delta time in seconds
+            dt = min(raw_dt, 0.05) # 強制 dt 最大不超過 0.05 秒 (防止穿牆與瞬移)
+            self.handle_events()
+            self.update(dt)
             self.draw()
 
         pygame.quit()
         sys.exit()
 
-# --- Main execution block ---
-if __name__ == '__main__':
-    # Create necessary assets directory if it doesn't exist
-    assets_dir = 'assets'
-    if not os.path.exists(assets_dir):
-        os.makedirs(assets_dir)
-    
-    # Create dummy ground tile asset
-    ground_tile_path = os.path.join(assets_dir, 'ground_tile.png')
-    if not os.path.exists(ground_tile_path):
-        print(f"Creating dummy asset: {ground_tile_path}")
-        dummy_ground = pygame.Surface((100, 100))
-        dummy_ground.fill((50, 50, 50))
-        pygame.image.save(dummy_ground, ground_tile_path)
+# --- JSON 企劃書數據 (嵌入在代碼中以符合輸出要求) ---
+json_data_raw = """
+{
+  "game_name": "方塊跳躍者 (Block Jumper)",
+  "technical_architecture": {
+    "used_modules": [
+      "sprite_manager.py",
+      "camera_player_center.py",
+      "collision.py"
+    ],
+    "implementation_details": "遊戲核心使用 sprite_manager.py 作為所有遊戲物件的基底，camera_player_center.py 實現玩家中心視角的平滑捲動與 Y-Sort 渲染，而 collision.py 則用於處理玩家與平台、陷阱、勝利旗幟之間的碰撞偵測與反應。重力、摩擦力及精確的地面檢測邏輯將在玩家物件中自行實作，並透過遊戲狀態機管理主選單、遊戲進行、暫停及結算流程。"
+  },
+  "game_rules": [
+    "玩家操控方塊角色在2D平台世界中左右移動與跳躍。",
+    "玩家受重力與摩擦力影響。",
+    "躲避移動的尖刺陷阱，碰到會扣血。",
+    "利用不同高度的平台前進。",
+    "勝利條件：玩家抵達地圖最右邊的旗幟處。",
+    "失敗條件：玩家血量歸零。",
+    "遊戲中可按 'P' 或 'ESC' 鍵暫停，進入暫停選單。"
+  ],
+  "entities": [
+    {
+      "name": "Player",
+      "variables": {
+        "initial_health": 100,
+        "max_horizontal_speed": 400,
+        "jump_force": -750,
+        "horizontal_acceleration": 300,
+        "ground_friction_coefficient": 0.85,
+        "air_damping_coefficient": 0.95,
+        "jump_buffer_time": 0.1,
+        "coyote_time": 0.1
+      }
+    },
+    {
+      "name": "SpikeTrap",
+      "variables": {
+        "movement_speed": 120,
+        "damage_per_hit": 20,
+        "movement_range_type": "oscillating"
+      }
+    },
+    {
+      "name": "GameWorld",
+      "variables": {
+        "gravity_acceleration": 900,
+        "level_width_pixels": 4000,
+        "level_height_pixels": 1000
+      }
+    }
+  ]
+}
+"""
 
-    # Create dummy game_plan.json if it doesn't exist
-    game_data_file = 'game_plan.json'
-    if os.path.exists(game_data_file): os.remove(game_data_file) # For testing, always recreate
-    if not os.path.exists(game_data_file):
-        print(f"Creating default game data file: {game_data_file}")
-        default_game_data = {
-            "game_name": "刀鋒生存者",
-            "victory_condition": {
-                "type": "survival_time",
-                "value": 300
-            },
-            "game_rules": [
-                "目標: 生存並擊敗敵人！",
-                "WASD 移動, 滑鼠瞄準，自動攻擊。",
-                "升級以強化你的角色。",
-                "HP 歸零則遊戲結束。",
-                "P/ESC 暫停遊戲。"
-            ],
-            "entities": [
-                {
-                    "name": "Player",
-                    "variables": {
-                        "initial_hp": 100,
-                        "max_hp": 100,
-                        "movement_speed": 150,
-                        "initial_exp": 0,
-                        "exp_to_level_up": 100,
-                        "exp_level_up_increase_rate": 0.2,
-                        "knife_initial_damage": 10,
-                        "knife_initial_attack_interval": 1.0,
-                        "collision_radius": 16,
-                        "upgrade_options": {
-                            "damage_increase": 5,
-                            "attack_speed_interval_decrease": 0.1,
-                            "health_recovery_percentage": 0.25
-                        }
-                    }
-                },
-                {
-                    "name": "Knife",
-                    "variables": {
-                        "flight_speed": 400,
-                        "lifetime": 2.0
-                    }
-                },
-                {
-                    "name": "Enemy_SmallGrunt",
-                    "variables": {
-                        "initial_spawn_frequency": 2.0,
-                        "hp": 20,
-                        "movement_speed": 80,
-                        "collision_damage": 5,
-                        "exp_drop": 20
-                    }
-                }
-            ]
-        }
-        with open(game_data_file, 'w', encoding='utf-8') as f:
-            json.dump(default_game_data, f, indent=4, ensure_ascii=False)
-    
-    # CRITICAL: `game.game_active = False` explicitly to show menu initially
+# --- 主程式進入點 ---
+if __name__ == '__main__':
     game = Game()
-    game.game_active = False # Ensures main menu is shown on startup for manual play
+    game.game_active = False # Auto-Test Hook: Explicitly set to False for menu
     game.run()
