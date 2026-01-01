@@ -5,7 +5,7 @@ import google.generativeai as genai
 
 # 引入模組
 from config import *
-from Project.tools import code_to_py, clean_code
+from tools import code_to_py, clean_code
 
 # 遊戲編譯與初步偵錯 (Runtime Check)
 def compile_and_debug(full_path: str) -> dict:

@@ -3,7 +3,7 @@ import sys
 import os
 
 from config import * # 包含 API Key, Models, Safety Settings
-from utils import clean_code, code_to_py
+from tools import clean_code, code_to_py
 from rag_system.core import get_rag_context
 
 # 多次生成確保程式碼完整
@@ -180,10 +180,13 @@ def generate_py(user_prompt) -> str:
         "     - 寫法範例: `def __init__(self, projectile_pool, projectiles_group): ...`"
         "   - **狀態機安全**: `change_state` 呼叫 `enter(**kwargs)` 時，**必須**使用 `kwargs.setdefault()` 避免參數衝突。"
 
-        "3. **物理系統 (Physics Precision)**:"
-        "   - **禁止**直接操作 `rect.x/y` (會導致整數精度遺失)。"
-        "   - **必須**維護 `self.pos` (Vector2) 浮點數座標。"
-        "   - Update 流程: `self.pos += velocity * dt` -> `self.rect.center = round(self.pos)`。"
+        "3. **物理與迴圈穩定性 (Physics & Loop Stability)**:"
+    "   - **Delta Time 限制 (防止穿牆)**: 在 `Game.run` 迴圈中，**必須** 限制 `dt` 最大值。"
+    "     - 強制寫法: `dt = min(self.clock.tick(FPS) / 1000.0, 0.05)` (上限 0.05秒)，防止視窗拖動或卡頓時造成的物體瞬移。"
+    "   - **浮點數座標**: 禁止直接操作 `rect.x/y`。必須維護 `self.pos` (Vector2) 並在運算後同步至 `rect`。"
+    "   - **分離軸運動 (Separated Axis Movement)** (防止卡牆/滑步):"
+    "     - **嚴禁** 同時更新 X 和 Y 後才檢查碰撞 (這會導致角色陷進地板滑行)。"
+    "     - **必須** 採用嚴格順序: 1. 移動 X -> 2. 檢查/修正 X 碰撞 -> 3. 移動 Y -> 4. 檢查/修正 Y 碰撞。"
 
         "4. **自動化測試接口 (Auto-Test Hook)**:"
         "   - `Game.__init__`: 預設 `self.game_active = False`。"

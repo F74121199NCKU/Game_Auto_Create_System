@@ -20,7 +20,7 @@ def generate_whole(user_prompt: str):
     for current_attempt in range(1, max_attempts + 1):
         print(f"\n--- 進入第 {current_attempt} / {max_attempts} 輪測試 ---")
 
-        # [階段一] 基本執行測試 (Executor: Compile & Run)
+        # [階段一] (Executor: Compile & Run)
         exec_result = compile_and_debug(filepath)
         
         if not exec_result["state"]:
@@ -54,9 +54,7 @@ def generate_whole(user_prompt: str):
                 print("❌ [Fuzzer] 最終測試失敗，已無修復機會。")
                 break
 
-    # ==========================================
     # [最終結果判定]
-    # ==========================================
     if wrong:
         print("\n⚠️ 非常抱歉，自動修復次數耗盡，無法正確偵錯。")
         print("請檢查 dest/generated_app.py 進行手動調整。")
