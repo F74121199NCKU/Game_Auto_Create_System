@@ -1,5 +1,8 @@
 目前約1300行
 
+# Game_Auto_Create_System
+A System that can create games from the User prompt
+
 # 環境建置
 ```
 python -m pip install chromadb google-generativeai    #下載google的向量資料庫及其AI model
