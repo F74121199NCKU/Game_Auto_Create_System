@@ -59,5 +59,16 @@
       "group"
     ],
     "description": "所有遊戲物件的基礎類別，繼承自 Pygame 的 Sprite"
+  },
+  {
+    "filename": "tile_map.py",
+    "tags": [
+      "procedural-generation",
+      "maze",
+      "dfs",
+      "tilemap",
+      "grid-system"
+    ],
+    "description": "迷宮生成與管理模組。 封裝了 DFS 迷宮生成演算法與基本的網格繪圖功能。 功能： 1. 使用 Iterative DFS 演算法生成保證連通的迷宮。 2. 提供標準化的地圖繪製方法。"
   }
 ]

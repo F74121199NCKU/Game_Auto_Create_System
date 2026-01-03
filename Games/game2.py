@@ -100,7 +100,7 @@ class EventManager:
     def __new__(cls) -> 'EventManager':
         if cls._instance is None:
             cls._instance = super(EventManager, cls).__new__(cls)
-            cls._instance._subscribers: Dict[str, List[Callable[[Any], None]]] = collections.defaultdict(list)
+            cls._instance._subscribers: Dict[str, List[Callable[[Any], None]]] = collections.defaultdict(list) # type: ignore
         return cls._instance
 
     def subscribe(self, event_type: str, callback: Callable[[Any], None]) -> None:
@@ -654,7 +654,7 @@ class SoundManager:
     def __new__(cls) -> 'SoundManager':
         if cls._instance is None:
             cls._instance = super(SoundManager, cls).__new__(cls)
-            cls._instance._sounds: Dict[str, pygame.mixer.Sound] = {}
+            cls._instance._sounds: Dict[str, pygame.mixer.Sound] = {} # type: ignore
             # Pre-load silent placeholders in case real files are missing
             cls._instance.load_sound("player_shot", "assets/player_shot.wav")
             cls._instance.load_sound("enemy_explosion", "assets/enemy_explosion.wav")
@@ -665,7 +665,7 @@ class SoundManager:
             # If EventManager is created in Game, we'd need to pass it later or ensure its creation order.
             # Given the Game class design, EventManager is created before SoundManager is fully initialized
             # (SoundManager's __init__ is never called, only __new__), so it will need to be set later.
-            cls._instance.event_manager: Optional[EventManager] = None # Will be set by Game class
+            cls._instance.event_manager: Optional[EventManager] = None # type: ignore # Will be set by Game class
         return cls._instance
 
     def set_event_manager(self, event_manager: EventManager) -> None:

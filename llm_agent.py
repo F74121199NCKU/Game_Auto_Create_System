@@ -178,6 +178,7 @@ def generate_py(user_prompt) -> str:
         "   - **物件池分離**: `ObjectPool` 僅用於 `get/release`。渲染必須用 `pygame.sprite.Group`。"
         "     - 初始化時必須同時傳入 `pool` (生產) 與 `group` (渲染)。"
         "     - 寫法範例: `def __init__(self, projectile_pool, projectiles_group): ...`"
+        "     - 務必確保每個函數都有被正確地宣告以及有傳入正確類別的參數"
         "   - **狀態機安全**: `change_state` 呼叫 `enter(**kwargs)` 時，**必須**使用 `kwargs.setdefault()` 避免參數衝突。"
 
         "3. **物理與迴圈穩定性 (Physics & Loop Stability)**:"
