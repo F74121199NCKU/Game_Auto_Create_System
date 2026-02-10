@@ -4,9 +4,7 @@ import os
 import threading
 import signal
 
-# ==========================================
-# 1. Payload 保持不變 (這裡省略以節省篇幅，請保留原本的 CHAOS_PAYLOAD)
-# ==========================================
+
 CHAOS_PAYLOAD = """
 # --- [INJECTED SAFE FUZZER CODE] START ---
 import sys as _sys
