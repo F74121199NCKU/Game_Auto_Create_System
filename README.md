@@ -12,16 +12,50 @@ python -m pip install groq
 # chroma_db is the vector database, generated after running build_db.py
 
 # LoRA Environment Setup
-git clone https://github.com/bmaltais/kohya_ss.git      # Clone the repository locally
-cd kohya_ss                                             # Enter the directory
-.\setup.bat
+1. git clone https://github.com/bmaltais/kohya_ss.git      # Clone the repository locally
+2. cd kohya_ss                                             # Enter the directory
+3. .\setup.bat
 
 # If errors occur, ensure Python version is 3.10
 # After installation, delete the kohya_ss/venv folder and re-run .\setup.bat
-# Select option 1 in the Kohya_ss setup menu
+4. Select option 1 (Install kohya_ss GUI)in the Kohya_ss setup menu
+5. Select option 5 (Manually configure Accelerate)in the Kohya_ss setup menu
+IF the terminal stuck, press ctrl + C to end the process, then enter 7 to exit the setup.
+Enter the following instruction in terminal
+(1) .\venv\Scripts\activate 
+(2) accelerate config
+
+6. Hardware Acceleration Configuration
+    Run accelerate config in your terminal and follow these instructions to complete the setup:
+
+    1. In which compute environment are you running?
+        Selection: This machine
+
+    2. Which type of machine are you using?
+        Selection: No distributed training
+
+    3. Do you want to run deterministic algorithms?
+        Selection: No
+
+    4. Do you wish to optimize your script with torch dynamo?
+        Selection: No
+
+    5. Do you want to use DeepSpeed?
+        Selection: No
+
+    6. What GPU(s) (by id) should be used?
+        Selection: all
+
+    7. Would you like to enable numa efficiency? (Currently only supported on NVIDIA hardware). [yes/NO]: 
+        Selection: IF your GPU is NVIDIA then yes, otherwise choose NO
+    
+    8. Do you wish to use FP16 or BF16 (mixed precision)?
+        NVIDIA 30/40/50 Series GPUs: Please ensure you select bf16 for the best compatibility and performance.
+        NVIDIA 10/20 Series GPUs: Please select fp16.
+        Integrated Graphics or Older Devices: Please select no (None).
 
 ```
-# 📂 檔案結構樹 (Project Tree)
+# 📂 Project Tree
 ```
 Project/
 │
