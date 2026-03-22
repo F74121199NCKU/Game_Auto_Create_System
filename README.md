@@ -15,7 +15,7 @@ This project integrates several cutting-edge AI and software engineering methodo
 * **Automated Fuzz Testing (Chaos Engineering)**: Injects a background thread to simulate extreme player inputs (random clicks and keystrokes) to stress-test the generated games for stability.
 * **Dynamic Error Solving**: Captures Python Tracebacks during runtime and feeds them back into a Tester-Programmer feedback loop for autonomous bug fixing.
 
-## Encironment setup
+## Environment setup
 ```Bash
 python -m pip install chromadb google-generativeai    # Install Google's vector database and AI models
 python -m pip install groq
