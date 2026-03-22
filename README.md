@@ -70,6 +70,11 @@ Enter the following instruction in terminal
     1. Enter .\gui.bat in the terminal
     2. Find the line written " Running on local URL:  http://127.0.0.1:7860", the http is the website
 
+### 🎨 Pre-requisite: Download the LoRA Model
+Because the Stable Diffusion LoRA model is too large for GitHub, you need to download it manually:
+1. Download the `pixel people.safetensors` model from [Here](Put_Your_Google_Drive_Link_Here).
+2. Place the model into the folder and remember to change the code in the image_generator.py
+
 ## 📂 Core Modules and File Structure
 
 Below is a brief introduction to the key files that power the system:

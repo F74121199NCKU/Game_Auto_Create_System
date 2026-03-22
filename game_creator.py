@@ -67,21 +67,25 @@ if __name__ == "__main__":
     
     #Example for testing
     user_request = """
-    Develop a 2D Top-Down Sci-Fi Space Shooter with wave survival mechanics using Pygame.
+    Create a 2D Pixel Art Survival Arena game using Pygame.
 
-    1. Core Movement & Aiming: The player controls a spaceship using WASD for 8-way movement. The spaceship must smoothly rotate to always face the current mouse cursor position.
-    2. Combat System: Clicking the left mouse button fires high-speed lasers towards the cursor. You MUST heavily utilize the 'Object Pool' design pattern to manage all laser projectiles and prevent memory leaks.
-    3. Enemy Mechanics: 
-    - Type A 'Asteroids': Drift slowly towards the player. When destroyed, they split into two smaller, faster asteroids.
-    - Type B 'Alien Drones': Spawn periodically and actively calculate the shortest path to chase the player.
-    - Spawn Logic: Enemies constantly spawn from just outside the four edges of the screen. The spawn rate increases by 10% every 15 seconds.
-    4. Performance Optimization: Since there will be many projectiles and enemies, you must implement efficient collision detection (e.g., Spatial Grid concept or optimized Sprite Group collisions) to handle Laser-to-Enemy and Enemy-to-Player impacts.
-    5. Game States & UI: 
-    - Must implement a complete state machine: Main Menu (Start, Quit) -> Playing -> Paused (Press 'P' or 'ESC') -> Game Over.
-    - HUD: Clearly display the player's current HP (starts at 3), Score, and a Survival Timer.
-    6. Win/Loss Conditions: 
-    - Loss: If player HP drops to 0, show the Game Over screen with the final score and a 'Restart' option.
-    - Win: Survive for exactly 120 seconds. Show a 'Victory' screen with a 'Restart' option.
+    【Visual & Asset Requirements】
+    The game MUST use generated image assets for the following entities:
+    1. Player: "A pixel art brave hero standing, RPG style"
+    2. Enemy: "A pixel art creepy zombie monster"
+    3. Collectible: "A pixel art shiny gold coin"
+    (Note: The Art Director should generate these assets, and the Architect MUST load them and apply `.set_colorkey((255, 255, 255))` to remove the white background.)
+
+    【Core Gameplay Mechanics】
+    1. Movement: The player controls the hero using WASD keys to move around the screen.
+    2. Auto-Attack: The player automatically shoots a magical energy ball towards the nearest enemy every 1.5 seconds.
+    3. Enemy AI: Zombies spawn from random edges of the 800x600 screen every 2 seconds. They constantly calculate the vector to move directly towards the player.
+    4. Scoring System: When an energy ball hits a zombie, the zombie is destroyed and drops a gold coin. Collecting the coin adds 10 points to the score.
+    5. Health System: The player starts with 3 HP. If a zombie collides with the player, the player takes damage, gets a brief 1-second invulnerability, and the zombie is destroyed.
+
+    【Game States & Technical Rules】
+    1. State Machine: Must have a "Main Menu" (Press SPACE to start) -> "Playing" -> "Game Over" (Shows final score, Press R to restart).
+    2. Optimization: Use Pygame `pygame.sprite.Group` for all collision detections (Player vs Enemy, Projectile vs Enemy, Player vs Coin).
     """
     
     if user_request:

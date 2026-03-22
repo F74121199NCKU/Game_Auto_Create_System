@@ -3,11 +3,15 @@ from google.genai import types      #type: ignore
 import sys
 import os
 import time
+import json
 
 # Internal project imports
 from toolbox.config import * # Includes API_KEY, Models, Safety Settings
 from toolbox.tools import clean_code, code_to_py
 from rag_system.core import get_rag_context
+from toolbox.image_generator import generate_game_assets
+import json
+
 
 # Initialize the new Google Gen AI Client
 # Assuming API_KEY is defined in your config.py
@@ -172,7 +176,22 @@ def generate_py(user_prompt: str):
     with open(doc_path, "w", encoding="utf-8") as f:
         f.write(response_planner.text)
 
-    # 3. Game Architect (Designer)
+    # 3. Art Director & Asset Generator
+    print("🎨 Passing design to Art Director...")
+    asset_requests = art_director_plan_assets(response_planner.text)
+    
+    available_assets_str = "[]"
+    if asset_requests:
+        print("⚙️ Initiating Stable Diffusion to generate assets. This may take a while...")
+        generate_game_assets(asset_requests, dest_folder="dest/assets")
+        
+        asset_filenames = [asset['filename'] for asset in asset_requests]
+        available_assets_str = json.dumps(asset_filenames)
+        print(f"✅ Assets ready: {available_assets_str}")
+    else:
+        print("⚠️ No assets planned or error occurred. Proceeding with basic shapes.")
+
+    # 4. Game Architect (Designer)
     system_game_designer = (
         "You are a Senior Python Pygame Game Architect. Tasked with writing single-file game code based on a JSON design document and reference modules."
         
@@ -207,6 +226,16 @@ def generate_py(user_prompt: str):
         "   - **Cursor**: Never hide the mouse (`set_visible(False)`) unless a custom cursor is implemented."
         "   - **Frustum Culling**: Retain at least a 100px buffer (Margin)."
         "   - **Initial Camera**: Camera must immediately focus on player base during `reset_game`."
+        f"【Available Image Assets】\n"
+        f"You MUST use the following image files located in the 'assets/' folder: {available_assets_str}\n\n"
+        "1. **Loading Images & Pathing**: You MUST construct the robust path using `base_dir = os.path.dirname(os.path.abspath(__file__))` and `path = os.path.join(base_dir, 'assets', filename)`. Then use `pygame.image.load(path)`. DO NOT use simple relative paths."
+        "2. **Fallback Colors**: If an image fails to load, create a fallback Surface. Use `(40, 40, 40)` for backgrounds and `(255, 0, 255)` for entities so they don't blend together."
+        
+        "【Asset Usage Rules (Strictly Enforced)】\n"
+        "1. **Loading Images**: Load images using `pygame.image.load(os.path.join('assets', filename)).convert()`.\n"
+        "2. **Transparency (CRITICAL)**: Stable Diffusion generated images with a white background. You MUST remove the white background by calling `.set_colorkey((255, 255, 255))` on every loaded image.\n"
+        "3. **Scaling**: Scale the image to match the entity's `rect` size using `pygame.transform.scale`.\n"
+        "4. **Fallback**: If an entity doesn't have a corresponding image in the list, fallback to drawing geometric pattern like rectangle or circle (`pygame.draw.rect`).\n"
 
         "6. **Menu System**:"
         "   - **Main Menu**: Start, Rules, Quit."
@@ -218,7 +247,7 @@ def generate_py(user_prompt: str):
         "Parse the input JSON (`technical_architecture`, `game_rules`) and produce a single complete Python file. Import pygame. No Markdown formatting."
     )
     
-    # New SDK Call for Architect
+    # SDK Call for Architect
     response_designer = client.models.generate_content(
         model = MODEL_NORMAL,
         contents=f"{system_game_designer}\n\nDesign Document: {response_planner.text}",
@@ -237,3 +266,41 @@ def generate_py(user_prompt: str):
 
     filepath = code_to_py(code_content)
     return filepath, code_content
+
+def art_director_plan_assets(design_doc: str) -> list:
+    print("👩‍🎨 [Art Director] Analyzing design document for required visual assets...")
+    
+    art_prompt = (
+        "You are a Game Art Director. Read the game design document and decide what image assets are needed.\n"
+        "Generate prompts for a Stable Diffusion model trained on a 'pixel people' LoRA.\n"
+        "【Rules】\n"
+        "1. Output ONLY a valid JSON array. No markdown, no explanation.\n"
+        "2. Keep the prompts focused on pixel art character/object descriptions.\n"
+        "3. Standard sprite size is [64, 64]. Backgrounds can be [800, 600].\n"
+        "【JSON Format Expected】\n"
+        "[\n"
+        "  {\"filename\": \"player.png\", \"prompt\": \"pixel art cute girl hero, standing, facing forward\", \"size\": [64, 64]},\n"
+        "  {\"filename\": \"enemy.png\", \"prompt\": \"pixel art evil robot, standing\", \"size\": [64, 64]}\n"
+        "]"
+        f"\n\n【Design Document】\n{design_doc}"
+    )
+    
+    # We use MODEL_FAST because it's good at JSON structuring
+    response = client.models.generate_content(
+        model = MODEL_NORMAL,
+        contents = art_prompt,
+        config=types.GenerateContentConfig(safety_settings=safety_settings)
+    ).text.strip()
+    
+    # Clean up markdown if any
+    clean_json_str = clean_code(response)
+    
+    try:
+        asset_list = json.loads(clean_json_str)
+        # Convert list sizes to tuples
+        for asset in asset_list:
+            asset['size'] = tuple(asset['size'])
+        return asset_list
+    except Exception as e:
+        print(f"❌ [Art Director] Failed to parse JSON: {e}")
+        return []
