@@ -1,71 +1,88 @@
 # game_creator.py 
+import time
 import sys
-from llm_agent import complete_prompt, generate_py
+from core.llm_agent import complete_prompt, generate_py
 from Debug.fuzz_tester import run_fuzz_test
 from Debug.executor import compile_and_debug, error_solving
+
 def generate_whole(user_prompt: str):
-    # 1. 優化提示詞
+    # 1. Optimize prompt
     user_prompt = complete_prompt(user_prompt)
     if not user_prompt:
-        print("⚠️ 輸入非法提示詞或者發生未知錯誤，請重新提供提示詞")
+        print("⚠️ Invalid prompt or unknown error occurred. Please provide the prompt again.")
         return
     
-    # 2. 生成並儲存程式碼 (Agent 工作)
+    # 2. Generate and save code (Agent task)
     filepath, code_content = generate_py(user_prompt)
     
-    # 3. 執行與自動修復迴圈 (Executor 工作)
-    max_attempts = 3  # 設定最大偵測次數 (想要偵測 3 次)
-    wrong = True      # 預設狀態是錯誤的
+    # 3. Execution and auto-repair loop (Executor task)
+    max_attempts = 3  # Set maximum number of detection attempts (3 times)
+    wrong = True      # Default state is failing/wrong
 
     for current_attempt in range(1, max_attempts + 1):
-        print(f"\n--- 進入第 {current_attempt} / {max_attempts} 輪測試 ---")
+        print(f"\n--- Entering Round {current_attempt} / {max_attempts} ---")
 
-        # [階段一] (Executor: Compile & Run)
+        # [Phase 1] (Executor: Compile & Run)
         exec_result = compile_and_debug(filepath)
         
         if not exec_result["state"]:
-            # --- 失敗處理 ---
+            # --- Failure Handling ---
             if current_attempt < max_attempts:
-                print(f"🔧 [Executor] 執行失敗，正在進行第 {current_attempt} 次修復...")
+                print(f"🔧 [Executor] Execution failed. Performing repair attempt #{current_attempt}...")
                 code_content = error_solving(exec_result["Text"], code_content)
-                # 修復完後，使用 continue 直接進入下一輪迴圈 (重新從 Executor 開始測)
+                # After repair, use continue to enter the next loop iteration (restart from Executor)
                 continue
             else:
-                print("❌ [Executor] 最終測試失敗，已無修復機會。")
-                break # 這是最後一次偵測，直接跳出
+                print("❌ [Executor] Final test failed. No more repair attempts remaining.")
+                break # Last attempt reached, break the loop
 
-        # [階段二] Fuzz 壓力測試 (Fuzz Tester: Runtime Logic)
-        # 只有當 Executor 通過時，才會進到這裡
+        # [Phase 2] Fuzz Stress Testing (Fuzz Tester: Runtime Logic)
+        # This part is only reached if the Executor phase passes
         fuzz_result = run_fuzz_test()
 
         if fuzz_result["state"]:
-            # --- 成功 ---
-            print("🎉 恭喜！遊戲通過所有測試！")
+            # --- Success ---
+            print("🎉 Congratulations! The game passed all tests!")
             wrong = False
-            break # 測試全部通過，跳出迴圈
+            break # All tests passed, exit loop
         else:
-            # --- 失敗處理 ---
+            # --- Failure Handling ---
             if current_attempt < max_attempts:
-                print(f"🔧 [Fuzzer] 測試失敗，正在進行第 {current_attempt} 次邏輯修復...")
+                print(f"🔧 [Fuzzer] Test failed. Performing logic repair attempt #{current_attempt}...")
                 code_content = error_solving(fuzz_result["Text"], code_content)
-                # 修復完後，使用 continue 直接進入下一輪 (確保修復後的代碼也能通過 Executor)
+                # After repair, use continue to next round (ensuring repaired code still passes Executor)
                 continue
             else:
-                print("❌ [Fuzzer] 最終測試失敗，已無修復機會。")
+                print("❌ [Fuzzer] Final test failed. No more repair attempts remaining.")
                 break
 
-    # [最終結果判定]
+    # [Final Result Determination]
     if wrong:
-        print("\n⚠️ 非常抱歉，自動修復次數耗盡，無法正確偵錯。")
-        print("請檢查 dest/generated_app.py 進行手動調整。")
+        print("\n⚠️ Sorry, auto-repair attempts exhausted. Unable to debug correctly.")
+        print("Please check dest/generated_app.py for manual adjustments.")
 
 if __name__ == "__main__":
     print("🎮 AI Game Creator")
-    user_request = input("請輸入你想製作的遊戲 (例如: 貪食蛇): ")
+    user_request = input("Please enter the game you want to create (e.g., Snake): ")
     
-    #測試用範例
+    #Example for testing
     user_request = """
-    幫我開發一款類似 Vampire Survivors 的 2D Roguelike 生存遊戲。1. 地圖與視角： 偽無限地圖（或是鏡頭跟隨玩家移動），背景無限延伸。2. 玩家操作：WASD 控制角色移動。3. 滑鼠游標: 控制攻擊的瞄準方向。4. 攻擊機制: 玩家不需要點擊滑鼠，角色會自動每隔 1 秒向「滑鼠游標當下的方向」發射一把飛刀。飛刀具有飛行速度與碰撞檢測。5. 敵人系統(1)敵人會源源不絕地從螢幕邊緣（視窗外）生成。(2)敵人會自動追蹤（移動向）玩家位置。(3)敵人碰到玩家會造成傷害。6.RPG 數值系統：(1)生命值 (HP)： 玩家有血量，被碰到會扣血，血量歸零則遊戲結束 (Game Over)。(2)經驗值 (XP)： 敵人死亡後會掉落經驗寶石 (Gem)。(3)升級機制： 玩家吃到寶石增加經驗條。升級時「遊戲暫停」，跳出 UI 選單讓玩家三選一：『增加攻速 (冷卻減少)』、『增加傷害』、『恢復血量』。7. 獲勝條件： 玩家存活滿 60 秒即獲勝。
+    Develop a 2D Top-Down Sci-Fi Space Shooter with wave survival mechanics using Pygame.
+
+    1. Core Movement & Aiming: The player controls a spaceship using WASD for 8-way movement. The spaceship must smoothly rotate to always face the current mouse cursor position.
+    2. Combat System: Clicking the left mouse button fires high-speed lasers towards the cursor. You MUST heavily utilize the 'Object Pool' design pattern to manage all laser projectiles and prevent memory leaks.
+    3. Enemy Mechanics: 
+    - Type A 'Asteroids': Drift slowly towards the player. When destroyed, they split into two smaller, faster asteroids.
+    - Type B 'Alien Drones': Spawn periodically and actively calculate the shortest path to chase the player.
+    - Spawn Logic: Enemies constantly spawn from just outside the four edges of the screen. The spawn rate increases by 10% every 15 seconds.
+    4. Performance Optimization: Since there will be many projectiles and enemies, you must implement efficient collision detection (e.g., Spatial Grid concept or optimized Sprite Group collisions) to handle Laser-to-Enemy and Enemy-to-Player impacts.
+    5. Game States & UI: 
+    - Must implement a complete state machine: Main Menu (Start, Quit) -> Playing -> Paused (Press 'P' or 'ESC') -> Game Over.
+    - HUD: Clearly display the player's current HP (starts at 3), Score, and a Survival Timer.
+    6. Win/Loss Conditions: 
+    - Loss: If player HP drops to 0, show the Game Over screen with the final score and a 'Restart' option.
+    - Win: Survive for exactly 120 seconds. Show a 'Victory' screen with a 'Restart' option.
     """
+    
     if user_request:
         generate_whole(user_request)

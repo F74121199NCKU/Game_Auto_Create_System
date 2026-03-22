@@ -1,81 +1,114 @@
 import sys
 import subprocess
 import os
-import google.generativeai as genai
+import time
+# Replaced import google.generativeai as genai with the new client-based approach
+from google.genai import types
 
-# 引入模組
-from config import *
-from tools import code_to_py, clean_code
+# Import modules
+# Ensure Project.toolbox.config contains the 'client' object we defined earlier
+from toolbox.config import client, MODEL_SMART, safety_settings
+from toolbox.tools import code_to_py, clean_code
 
-# 遊戲編譯與初步偵錯 (Runtime Check)
+# Game execution and preliminary debugging (Runtime Check)
 def compile_and_debug(full_path: str) -> dict:
     folder = os.path.dirname(full_path)      
     filename = os.path.basename(full_path) 
-    print(f"🔄 正在執行並偵錯 {filename} 在 {folder}資料夾中 ...")
+    print(f" Executing and debugging {filename} in folder {folder} ...")
 
     try:
         result = subprocess.run(
             [sys.executable, filename],
-            capture_output = True,
-            text = True,
-            cwd = folder,
-            timeout = 10,             # 測試時間
-            encoding = 'utf-8', 
-            errors = 'ignore'         # 忽略無法解碼的字元
+            capture_output=True,
+            text=True,
+            cwd=folder,
+            timeout=10,               # Testing duration
+            encoding='utf-8', 
+            errors='ignore'           # Ignore undecodable characters
         )
         if result.returncode == 0:
-            print("✅ 遊戲執行完畢(Unusual)")
+            print("Game execution finished (Unusual - Main loop should normally be interrupted by timeout)")
             return {
                 "state": True,
                 "Text": None
             }
         else:
-            print("❌ 程式執行失敗，發生錯誤！")
+            print("Execution failed. Error occurred!")
             return {
                 "state": False,
                 "Text": result.stderr
             }
     except subprocess.TimeoutExpired:
-        print("✅ 遊戲可持續執行")
+        # For a game, a timeout is usually good as it means the main loop is running.
+        print("Game continues running (Stable)")
         return {
                 "state": True,
                 "Text": None
         }
     except Exception as e:
-        print(f"❌ 發生系統錯誤: {e}")  
+        print(f"System error occurred: {e}")  
         return {
             "state": False,
             "Text": str(e)
         }
 
-# 遊戲除錯 (Runtime Error Fixing)
-def error_solving(error_msg, code_content) -> str:
-    system_instruction_error_solver = (
-        "你是一個 Python 執行期錯誤修復專家 (Runtime Exception Specialist)。"
-        "你的任務是根據「完整的 Python 原始碼」以及「控制台錯誤訊息 (Traceback/Stderr)」，修復導致程式崩潰的錯誤。"
-        "【修復策略與規範】"
-        "1. **Traceback 優先:** 針對報錯的那一行進行精準修復。"
-        "2. **禁止鴕鳥心態:** 嚴禁為了解決錯誤而直接刪除功能。"
-        "3. **保持架構完整:** 維持原有的 OOP 架構。"
-        "【輸出格式】"
-        "直接輸出修復後、可直接執行的完整 Python 程式碼 (Full Code)。"
-        "嚴禁輸出 Markdown 標記，嚴禁輸出任何解釋文字。"
-    )
-    model = genai.GenerativeModel(MODEL_SMART)
-    response_debugger = model.generate_content(f"""
-            {system_instruction_error_solver}
+# Multi-Agent Error Solving
+def error_solving(error_msg: str, code_content: str, max_turns: int = 1) -> str:
+    """
+    Implements the dynamic testing phase from ChatDev.
+    A Tester reports the bug, and a Programmer fixes it through a dialogue chain.
+    """
+    current_code = code_content
+    
+    print("🐞 [Chat Chain] Starting Multi-Agent Dynamic Debugging...")
 
-            === 執行期錯誤報告 (Runtime Error Traceback) ===
-            {error_msg}
-            ==============================================
+    for turn in range(max_turns):
+        print(f"🔄 Debugging Turn {turn + 1}")
 
-            === 原始程式碼 (Source Code) ===
-            {code_content}
-            ==============================================
+        # 1. Tester Agent (Instructor) analyzes the crash
+        tester_prompt = (
+            "You are a Senior Software Test Engineer."
+            "Analyze the following Python Traceback error against the source code.\n"
+            "Identify the EXACT line and cause of the crash. Give specific instructions on how to fix it.\n"
+            "DO NOT WRITE THE FULL REPAIRED CODE. Just provide the diagnosis and action plan."
+            f"\n\n【Traceback Error】\n{error_msg}\n\n【Current Source Code】\n{current_code}"
+        )
+        
+        tester_feedback = client.models.generate_content(
+            model = MODEL_SMART,
+            contents = tester_prompt,
+            config = types.GenerateContentConfig(safety_settings = safety_settings)
+        ).text.strip()
+        
+        print(f"🎯 Tester Diagnosis:\n{tester_feedback}")
+        print("⏳ Waiting for API cooldown (15 seconds)...")
+        time.sleep(15)
 
-            請根據上方的錯誤報告，修復原始程式碼。
-            """
-    )
-    code_content = clean_code(response_debugger.text)
-    code_to_py(code_content) # 存檔覆蓋
-    return code_content
+
+        # 2. Programmer Agent (Assistant) fixes the code
+        programmer_prompt = (
+            "You are a Python Runtime Exception Specialist (Programmer)."
+            "You just received a bug report and action plan from the Tester.\n"
+            f"【Tester Diagnosis】\n{tester_feedback}\n\n"
+            f"【Current Source Code】\n{current_code}\n\n"
+            "【CRITICAL RULES】\n"
+            "1. Fix the bug based on the Tester's diagnosis.\n"
+            "2. DO NOT remove existing Object-Oriented structure or automated test hooks (`self.game_active`).\n"
+            "3. Output ONLY the fixed complete Python code without markdown tags or explanations."
+        )
+
+        programmer_response = client.models.generate_content(
+            model = MODEL_SMART,
+            contents=programmer_prompt,
+            config=types.GenerateContentConfig(safety_settings=safety_settings)
+        ).text
+        
+        current_code = clean_code(programmer_response)
+        
+        # In a more advanced version, we could re-run the code here to check if it's fixed.
+        # But for now, we rely on the external game_creator.py loop to test the new code.
+        break # We do 1 turn of precise Q&A per error_solving call to fit your existing game_creator loop
+
+    # Overwrite and save the repaired file
+    code_to_py(current_code) 
+    return current_code

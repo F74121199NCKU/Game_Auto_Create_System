@@ -7,7 +7,7 @@
       "scroll",
       "y-sort"
     ],
-    "description": "Box Camera (箱型相機) 邏輯封裝版。 功能： 1. 建立一個虛擬的 Camera Box。 2. 只有當目標 (target) 移出 Box 邊界時，相機才會移動。 3. 內建 Y-Sort (深度排序) 渲染。"
+    "description": "Encapsulated Box Camera logic. Features: 1. Creates a virtual Camera Box. 2. The camera only moves when the target moves outside the Box boundaries. 3. Built-in Y-Sort (depth sorting) rendering."
   },
   {
     "filename": "camera_player_center.py",
@@ -18,7 +18,7 @@
       "player-center",
       "y-sort"
     ],
-    "description": "跟隨玩家移動的捲動相機，並內建 Y-Sort 深度排序。 適用於 RPG、冒險遊戲等大地圖遊戲。"
+    "description": "Scrolling camera that follows the player with built-in Y-Sort depth sorting. Suitable for RPGs, adventure games, and other large-map games."
   },
   {
     "filename": "collision.py",
@@ -29,7 +29,7 @@
       "interaction",
       "damage"
     ],
-    "description": "通用碰撞管理器 (Static Utility Class)。 封裝了 Pygame 的 spritecollide 與 groupcollide，提供更語意化的介面。 支援「單體 vs 群體」與「群體 vs 群體」的碰撞偵測與回呼 (Callback) 處理。"
+    "description": "General Collision Manager (Static Utility Class). Encapsulates Pygame's spritecollide and groupcollide to provide a more semantic interface. Supports 'Single vs Group' and 'Group vs Group' collision detection and Callback processing."
   },
   {
     "filename": "mouse_camera.py",
@@ -40,7 +40,7 @@
       "edge-panning",
       "y-sort"
     ],
-    "description": "滑鼠控制相機 (RTS Style / Edge Panning)。 功能： 1. 當滑鼠游標移動到視窗邊緣時，相機自動捲動。 2. 實作了「滑鼠鎖定/回彈」機制，當游標超出邊界時會自動彈回，產生無限捲動的手感。 3. 內建 Y-Sort (深度排序) 渲染。 適用遊戲類型：RTS (即時戰略)、模擬經營、塔防遊戲。"
+    "description": "Mouse-controlled camera (RTS Style / Edge Panning). Features: 1. Automatic scrolling when the mouse cursor moves to the window edge. 2. Implements a 'Mouse Lock/Bounce' mechanic for an infinite scrolling feel. 3. Built-in Y-Sort (depth sorting) rendering. Applicable genres: RTS (Real-Time Strategy), Simulation, and Tower Defense games."
   },
   {
     "filename": "object_pool.py",
@@ -49,7 +49,7 @@
       "memory",
       "pool"
     ],
-    "description": "簡易的物件池，用於重複使用子彈或敵人，避免頻繁的記憶體配置"
+    "description": "Simple Object Pool used to reuse bullets or enemies, avoiding frequent memory allocation."
   },
   {
     "filename": "sprite_manager.py",
@@ -58,7 +58,7 @@
       "rendering",
       "group"
     ],
-    "description": "所有遊戲物件的基礎類別，繼承自 Pygame 的 Sprite"
+    "description": "Base class for all game objects, inheriting from Pygame's Sprite class."
   },
   {
     "filename": "tile_map.py",
@@ -69,6 +69,6 @@
       "tilemap",
       "grid-system"
     ],
-    "description": "迷宮生成與管理模組。 封裝了 DFS 迷宮生成演算法與基本的網格繪圖功能。 功能： 1. 使用 Iterative DFS 演算法生成保證連通的迷宮。 2. 提供標準化的地圖繪製方法。"
+    "description": "Maze generation and management module. Encapsulates DFS maze generation algorithm and basic grid drawing functions. Features: 1. Uses Iterative DFS to generate a guaranteed connected maze. 2. Provides standardized map drawing methods."
   }
 ]

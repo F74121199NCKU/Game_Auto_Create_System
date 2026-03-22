@@ -3,6 +3,7 @@
 setting
 qdrant_storage
 dest/
+diffusion_model/
 test/
 __pycache__/
 Graphic/
@@ -10,3 +11,4 @@ Sound/
 rag_system/__pycache__/
 assets/
 *.json
+
