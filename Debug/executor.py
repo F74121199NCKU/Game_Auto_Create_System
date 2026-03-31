@@ -8,7 +8,7 @@ from google.genai import types
 # Import modules
 # Ensure Project.toolbox.config contains the 'client' object we defined earlier
 from toolbox.config import client, MODEL_SMART, safety_settings
-from toolbox.tools import code_to_py, clean_code
+from toolbox.tools import code_to_py, clean_code, safe_generate_content
 
 # Game execution and preliminary debugging (Runtime Check)
 def compile_and_debug(full_path: str) -> dict:
@@ -74,8 +74,8 @@ def error_solving(error_msg: str, code_content: str, max_turns: int = 1) -> str:
             f"\n\n【Traceback Error】\n{error_msg}\n\n【Current Source Code】\n{current_code}"
         )
         
-        tester_feedback = client.models.generate_content(
-            model = MODEL_SMART,
+        tester_feedback = safe_generate_content(
+            model_id = MODEL_SMART,
             contents = tester_prompt,
             config = types.GenerateContentConfig(safety_settings = safety_settings)
         ).text.strip()
@@ -97,8 +97,8 @@ def error_solving(error_msg: str, code_content: str, max_turns: int = 1) -> str:
             "3. Output ONLY the fixed complete Python code without markdown tags or explanations."
         )
 
-        programmer_response = client.models.generate_content(
-            model = MODEL_SMART,
+        programmer_response = safe_generate_content(
+            model_id = MODEL_SMART,
             contents=programmer_prompt,
             config=types.GenerateContentConfig(safety_settings=safety_settings)
         ).text

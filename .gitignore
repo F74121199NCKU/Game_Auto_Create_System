@@ -11,4 +11,6 @@ Sound/
 rag_system/__pycache__/
 assets/
 *.json
+Base_models/
+models/
 

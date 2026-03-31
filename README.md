@@ -99,4 +99,3 @@ Below is a brief introduction to the key files that power the system:
 * `config.py`: The centralized configuration hub. It stores API keys, assigns specific LLM models to different tasks (e.g., `MODEL_SMART` vs. `MODEL_FAST`), and contains the injected payload for fuzz testing.
 
 # Future Plans
-Integrate pathfinding algorithms and other common game development algorithms into the RAG system, such as Dijkstra, DFS, BFS, A*, etc.

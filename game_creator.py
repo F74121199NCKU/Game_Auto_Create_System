@@ -63,7 +63,7 @@ def generate_whole(user_prompt: str):
 
 if __name__ == "__main__":
     print("🎮 AI Game Creator")
-    user_request = input("Please enter the game you want to create (e.g., Snake): ")
+    #user_request = input("Please enter the game you want to create (e.g., Snake): ")
     
     #Example for testing
     user_request = """
@@ -87,6 +87,8 @@ if __name__ == "__main__":
     1. State Machine: Must have a "Main Menu" (Press SPACE to start) -> "Playing" -> "Game Over" (Shows final score, Press R to restart).
     2. Optimization: Use Pygame `pygame.sprite.Group` for all collision detections (Player vs Enemy, Projectile vs Enemy, Player vs Coin).
     """
-    
+
+    user_request = input("Please enter the game you want to create (e.g., Snake): ")
+
     if user_request:
         generate_whole(user_request)

@@ -4,12 +4,14 @@ import sys
 import os
 import time
 import json
+import random
 
 # Internal project imports
-from toolbox.config import * # Includes API_KEY, Models, Safety Settings
-from toolbox.tools import clean_code, code_to_py
+from toolbox.config import *                                        # Includes API_KEY, Models, Safety Settings
+from toolbox.tools import clean_code, code_to_py, get_clean_json, safe_generate_content
 from rag_system.core import get_rag_context
-from toolbox.image_generator import generate_game_assets
+#from toolbox.image_generator import generate_game_assets
+from art_diffusion_model.graph_creator import generate_game_assets
 import json
 
 
@@ -19,6 +21,7 @@ client = genai.Client(api_key=API_KEY)
 
 # Multi-turn communication
 def multi_agent_code_review(initial_code: str, design_doc: str, max_turns: int = 2) -> str:
+    #time.sleep(15)
     current_code = initial_code
     
     for turn in range(max_turns):
@@ -34,10 +37,10 @@ def multi_agent_code_review(initial_code: str, design_doc: str, max_turns: int =
         )
         
         # TODO: Call Gemini (model=MODEL_SMART) to get reviewer_feedback
-        reviewer_feedback = client.models.generate_content(
-            model = MODEL_SMART,
-            contents = f"{reviewer_prompt}",
-            config = types.GenerateContentConfig(safety_settings=safety_settings)
+        reviewer_feedback = safe_generate_content(
+            model_id=MODEL_SMART,
+            contents=reviewer_prompt,
+            config=types.GenerateContentConfig(safety_settings=safety_settings)
         ).text.strip()
 
         if "PERFECT" in reviewer_feedback:
@@ -45,8 +48,8 @@ def multi_agent_code_review(initial_code: str, design_doc: str, max_turns: int =
             break 
             
         print(f"⚠️ Reviewer found issues:\n{reviewer_feedback}")
-        print("⏳ Waiting for API cooldown (15 seconds)...")
-        time.sleep(15)
+        #print("⏳ Waiting for API cooldown (15 seconds)...")
+        #time.sleep(15)
 
         # 2. Programmer Agent (Assistant) fixes the code based on feedback
         programmer_prompt = (
@@ -60,13 +63,13 @@ def multi_agent_code_review(initial_code: str, design_doc: str, max_turns: int =
         )
         
         # TODO: 
-        updated_code_response = client.models.generate_content(
-            model = MODEL_SMART,
-            contents = f"{programmer_prompt}",
-            config = types.GenerateContentConfig(safety_settings=safety_settings)
-        ).text
+        updated_code_response = safe_generate_content(
+            model_id=MODEL_SMART,
+            contents=programmer_prompt,
+            config=types.GenerateContentConfig(safety_settings=safety_settings)
+        )
 
-        current_code = clean_code(updated_code_response)
+        current_code = clean_code(updated_code_response.text)
         print("The code has been updated !")
     return current_code
 
@@ -91,9 +94,10 @@ def complete_prompt(user_prompt: str) -> str:
     
     try:
         # New SDK Call
-        response = client.models.generate_content(
-            model = MODEL_NORMAL,
-            contents=f"{system_instruction}\n\nUser Original Input: {user_prompt}"
+        response = safe_generate_content(
+            model_id = MODEL_NORMAL,
+            contents=f"{system_instruction}\n\nUser Original Input: {user_prompt}",
+            config=types.GenerateContentConfig(safety_settings=safety_settings)
         )
         refined_prompt = response.text.strip()
         
@@ -162,8 +166,8 @@ def generate_py(user_prompt: str):
     )
     
     # New SDK Call for Planner
-    response_planner = client.models.generate_content(
-        model = MODEL_NORMAL,
+    response_planner = safe_generate_content(
+        model_id = MODEL_NORMAL,
         contents=f"{system_instruction_planner}\n\nUser Requirements: {user_prompt}",
         config=types.GenerateContentConfig(safety_settings=safety_settings)
     )
@@ -177,19 +181,20 @@ def generate_py(user_prompt: str):
         f.write(response_planner.text)
 
     # 3. Art Director & Asset Generator
-    print("🎨 Passing design to Art Director...")
+    print("🎨 [System] Passing design document to Art Director Agent...")
     asset_requests = art_director_plan_assets(response_planner.text)
     
     available_assets_str = "[]"
     if asset_requests:
-        print("⚙️ Initiating Stable Diffusion to generate assets. This may take a while...")
+        print(f"⚙️ [System] Initiating SDXL for {len(asset_requests)} assets. Please wait...")
         generate_game_assets(asset_requests, dest_folder="dest/assets")
         
+        # Collect filenames for the Architect Agent to use in the code
         asset_filenames = [asset['filename'] for asset in asset_requests]
         available_assets_str = json.dumps(asset_filenames)
-        print(f"✅ Assets ready: {available_assets_str}")
+        print(f"✅ [System] Visual assets are ready: {available_assets_str}")
     else:
-        print("⚠️ No assets planned or error occurred. Proceeding with basic shapes.")
+        print("⚠️ [Warning] No assets were planned. The game will use default geometric shapes.")
 
     # 4. Game Architect (Designer)
     system_game_designer = (
@@ -226,7 +231,14 @@ def generate_py(user_prompt: str):
         "   - **Cursor**: Never hide the mouse (`set_visible(False)`) unless a custom cursor is implemented."
         "   - **Frustum Culling**: Retain at least a 100px buffer (Margin)."
         "   - **Initial Camera**: Camera must immediately focus on player base during `reset_game`."
-        f"【Available Image Assets】\n"
+
+        "6. **Menu System**:"
+        "   - **Main Menu**: Start, Rules, Quit."
+        "   - **Pause Menu** (P/ESC): Resume, Restart, Rules, Back to Main Menu."
+        "   - **Game Over**: Show SUCCESS/FAIL, including Restart, Back to Main Menu, Quit."
+        "   - Ensure the menu can switch smoothly under every states"
+
+        "【Available Image Assets】\n"
         f"You MUST use the following image files located in the 'assets/' folder: {available_assets_str}\n\n"
         "1. **Loading Images & Pathing**: You MUST construct the robust path using `base_dir = os.path.dirname(os.path.abspath(__file__))` and `path = os.path.join(base_dir, 'assets', filename)`. Then use `pygame.image.load(path)`. DO NOT use simple relative paths."
         "2. **Fallback Colors**: If an image fails to load, create a fallback Surface. Use `(40, 40, 40)` for backgrounds and `(255, 0, 255)` for entities so they don't blend together."
@@ -236,20 +248,15 @@ def generate_py(user_prompt: str):
         "2. **Transparency (CRITICAL)**: Stable Diffusion generated images with a white background. You MUST remove the white background by calling `.set_colorkey((255, 255, 255))` on every loaded image.\n"
         "3. **Scaling**: Scale the image to match the entity's `rect` size using `pygame.transform.scale`.\n"
         "4. **Fallback**: If an entity doesn't have a corresponding image in the list, fallback to drawing geometric pattern like rectangle or circle (`pygame.draw.rect`).\n"
-
-        "6. **Menu System**:"
-        "   - **Main Menu**: Start, Rules, Quit."
-        "   - **Pause Menu** (P/ESC): Resume, Restart, Rules, Back to Main Menu."
-        "   - **Game Over**: Show SUCCESS/FAIL, including Restart, Back to Main Menu, Quit."
-        "   - Ensure the menu can switch smoothly under every states"
+        "5. Pathing: Use `os.path.join(base_dir, 'assets', filename)` for robust cross-platform pathing.\n"
 
         "【Input Processing】"
         "Parse the input JSON (`technical_architecture`, `game_rules`) and produce a single complete Python file. Import pygame. No Markdown formatting."
     )
     
     # SDK Call for Architect
-    response_designer = client.models.generate_content(
-        model = MODEL_NORMAL,
+    response_designer = safe_generate_content(
+        model_id = MODEL_NORMAL,
         contents=f"{system_game_designer}\n\nDesign Document: {response_planner.text}",
         config=types.GenerateContentConfig(safety_settings=safety_settings)
     )
@@ -271,36 +278,51 @@ def art_director_plan_assets(design_doc: str) -> list:
     print("👩‍🎨 [Art Director] Analyzing design document for required visual assets...")
     
     art_prompt = (
-        "You are a Game Art Director. Read the game design document and decide what image assets are needed.\n"
-        "Generate prompts for a Stable Diffusion model trained on a 'pixel people' LoRA.\n"
-        "【Rules】\n"
-        "1. Output ONLY a valid JSON array. No markdown, no explanation.\n"
-        "2. Keep the prompts focused on pixel art character/object descriptions.\n"
-        "3. Standard sprite size is [64, 64]. Backgrounds can be [800, 600].\n"
-        "【JSON Format Expected】\n"
+        "You are a Senior Game Art Director. Your goal is to design visual assets for a high-quality game.\n"
+        "Generate a JSON array of objects representing game assets. Each object must contain highly detailed prompts for SDXL.\n\n"
+        "【Output Rules】\n"
+        "1. Output ONLY a valid JSON array. No markdown blocks, no conversational text.\n"
+        "2. Each asset MUST contain: 'filename', 'pos_prompt', 'neg_prompt', and 'size'.\n"
+        "3. Resolution standard for SDXL is [1024, 1024].\n\n"
+        "【Detailed Prompting Guidelines】\n"
+        "- 'pos_prompt': A paragraph describing subject appearance, materials, pose, lighting, and 16-bit pixel art style. Be extremely descriptive.\n"
+        "- 'neg_prompt': List unwanted elements like 'gradients', '3D shading', 'blur', 'realistic photo', or 'watermark'.\n\n"
+        "【JSON Structure Example】\n"
         "[\n"
-        "  {\"filename\": \"player.png\", \"prompt\": \"pixel art cute girl hero, standing, facing forward\", \"size\": [64, 64]},\n"
-        "  {\"filename\": \"enemy.png\", \"prompt\": \"pixel art evil robot, standing\", \"size\": [64, 64]}\n"
+        "  {\n"
+        "    \"filename\": \"hero.png\",\n"
+        "    \"pos_prompt\": \"high-quality 16-bit pixel art of a young knight, silver armor with blue glowing runes, holding a heavy claymore, heroic standing pose, sharp pixel edges, dynamic rim lighting, isolated on white background\",\n"
+        "    \"neg_prompt\": \"realistic, 3d render, smooth gradients, blurry, photographic, messy pixels, text\",\n"
+        "    \"size\": [1024, 1024]\n"
+        "  }\n"
         "]"
-        f"\n\n【Design Document】\n{design_doc}"
+        f"\n\n【Game Design Document】\n{design_doc}"
     )
     
     # We use MODEL_FAST because it's good at JSON structuring
-    response = client.models.generate_content(
-        model = MODEL_NORMAL,
+    response = safe_generate_content(
+        model_id = MODEL_NORMAL,
         contents = art_prompt,
         config=types.GenerateContentConfig(safety_settings=safety_settings)
     ).text.strip()
     
-    # Clean up markdown if any
-    clean_json_str = clean_code(response)
-    
+    # Clean up markdown and extract JSON
+    clean_json_str = get_clean_json(response)
+
     try:
+        # 3. Parse the structured JSON
         asset_list = json.loads(clean_json_str)
-        # Convert list sizes to tuples
+        
+        # Validation and Type Conversion
         for asset in asset_list:
-            asset['size'] = tuple(asset['size'])
+            # Ensure 'size' is a tuple for later use in pygame/diffusion
+            if 'size' in asset and isinstance(asset['size'], list):
+                asset['size'] = tuple(asset['size'])
+                
+        print(f"✅ [Art Director] Successfully planned {len(asset_list)} assets.")
         return asset_list
+
     except Exception as e:
-        print(f"❌ [Art Director] Failed to parse JSON: {e}")
+        print(f"❌ [Art Director] Failed to parse asset JSON: {e}")
+        # Return an empty list to avoid crashing the main workflow
         return []
