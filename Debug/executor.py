@@ -2,8 +2,7 @@ import sys
 import subprocess
 import os
 import time
-# Replaced import google.generativeai as genai with the new client-based approach
-from google.genai import types
+from google.genai import types      #type: ignore
 
 # Import modules
 # Ensure Project.toolbox.config contains the 'client' object we defined earlier
