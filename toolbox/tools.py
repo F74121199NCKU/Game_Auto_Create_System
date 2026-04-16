@@ -70,7 +70,10 @@ def safe_generate_content(model_id, contents, config=None):
             if "503" in str(e) or "429" in str(e):
                 # Calculate delay: base_delay * 2^attempt + random jitter
                 wait_time = (base_delay * (2 ** attempt)) + random.uniform(0, 5)
-                print(f"⚠️ Server overloaded (503). Retrying in {wait_time:.2f}s... (Attempt {attempt + 1}/{max_retries})")
+                if "503" in str(e):
+                    print(f"⚠️ Server overloaded (503). Retrying in {wait_time:.2f}s... (Attempt {attempt + 1}/{max_retries})")
+                elif "429" in str(e):
+                    print(f"⚠️ Server overloaded (429). Retrying in {wait_time:.2f}s... (Attempt {attempt + 1}/{max_retries})")
                 time.sleep(wait_time)
             else:
                 # If it's a different error, re-raise it
