@@ -1,18 +1,16 @@
-from google import genai
-from google.genai import types      #type: ignore
+import re
 import sys
 import os
 import time
 import json
 import random
-
-# Internal project imports
+from google import genai
+from google.genai import types                                      #type: ignore
 from toolbox.config import *                                        # Includes API_KEY, Models, Safety Settings
-from toolbox.tools import clean_code, code_to_py, get_clean_json, safe_generate_content
 from rag_system.core import get_rag_context
 #from toolbox.image_generator import generate_game_assets
 from art_diffusion_model.graph_creator import generate_game_assets
-import json
+from toolbox.tools import clean_code, code_to_py, get_clean_json, safe_generate_content
 
 
 # Initialize the new Google Gen AI Client
@@ -29,11 +27,34 @@ def multi_agent_code_review(initial_code: str, design_doc: str, max_turns: int =
         
         # Reviewer Agent  (finds issues)
         reviewer_prompt = (
-            "You are a Strict Code Reviewer. Analyze the Pygame code against the Design Document.\n"
-            "If the code is perfect, output exactly: 'PERFECT'.\n"
-            "Otherwise, list the top 3 critical bugs (e.g., Global variables, missing module injections, infinite loops).\n"
-            "DO NOT WRITE CODE. Just list the issues."
-            f"\n\nDesign Document:\n{design_doc}\n\nCode:\n{current_code}"
+            "You are a Strict Code Reviewer and QA Tester."
+            "First, read the Design Document. Extract the CORE GAMEPLAY MECHANICS (e.g., Invulnerability, Auto-Attack, Scoring, specific collisions)."
+            "Second, read the generated Python code."
+            "\n\n【YOUR TASK】"
+            "\n1. Do a line-by-line verification."
+            "\n2. If ANY mechanic from the Design Doc is missing, reject the code and output: 'MISSING LOGIC: [Describe what is missing]'."
+
+            "\n\n【STRICT REVIEW CHECKLIST】"
+            "\n1. **Asset Integrity**: Ensure EVERY `load_image` uses EXACT filenames from the list (e.g., `[sprite]player_mage_idle.png`). NO 'Graphic/' or other prefixes allowed."
+            "\n2. **Constructor Contract**: Every class inheriting from `GameSprite` MUST accept `pool=None` and call `super().__init__(pool=pool, **kwargs)`. Check for `TypeError` risks."
+            "\n3. **FSM Sequence**: States MUST be added via `fsm.add()` BEFORE calling `fsm.change()`. FSM must not change state in `__init__`."
+            "\n4. **Menu Compliance**: Startup Menu MUST have 3 buttons; Pause Menu MUST have 4 buttons (including 'Rules' and 'Restart')."
+            "\n5. **Null Safety**: Check for math operations on potentially `None` config values. Ensure `get_prop` has numeric defaults."
+            "\n6. **Spawning**: Confirm `camera.center_on_target()` is called immediately after level generation."
+            "\n7. Method Consistency: Ensure that every method called in the FSM state lambdas (like ui_manager.handle_event) is actually DEFINED in the corresponding class. Check for missing delegation logic in managers."
+            "\n8. JSON Target: Verify the code explicitly attempts to load game_config.json. Flag param.json as a bug."
+            "\n9. Scale Implementation: Ensure pygame.transform.scale is actively used on get_image outputs based on JSON configuration. 1024px default loading without scaling is a CRITICAL BUG."
+            "\n10. NoneType Defense: Check all dynamic dictionary assignments (e.g., data = lookup()). If they lack an or {} fallback before .get() is called, flag it as an AttributeError risk."
+            "\n11. Spacing/Tag Bug: Check if string keys in AssetManager exactly match available_assets_str without injecting stray spaces."
+            "\n12. Transparency: Ensure `set_colorkey` is NEVER used in the code. Verify that ALL image loading uses `.convert_alpha()`."
+            "\n13. UI Text Dynamic Rendering: Verify that UI button classes explicitly instantiate `pygame.font.Font`, render the text string, and blit it onto the center of the button surface."
+
+            "\n\n【Output Protocol】"
+            "\n- If the code passes ALL checks, output: 'PERFECT'."
+            "\n- Otherwise, list the Top 3 CRITICAL bugs only. Be concise. DO NOT write code."
+
+            f"\n\nDesign Document:\n{design_doc}"
+            f"\n\nCode:\n{current_code}"
         )
         
         # TODO: Call Gemini (model=MODEL_SMART) to get reviewer_feedback
@@ -53,13 +74,32 @@ def multi_agent_code_review(initial_code: str, design_doc: str, max_turns: int =
 
         # 2. Programmer Agent (Assistant) fixes the code based on feedback
         programmer_prompt = (
-            "You are a Senior Python Programmer. You just received feedback from the Code Reviewer.\n"
-            f"【Reviewer Feedback】\n{reviewer_feedback}\n\n"
-            f"【Current Code】\n{current_code}\n\n"
-            "【CRITICAL RULES】\n"
-            "1. Fix the code based on the feedback.\n"
-            "2. DO NOT remove existing automated test hooks (e.g., `self.game_active`) or RAG module imports.\n"
-            "3. Output ONLY the fixed complete Python code without markdown."
+            "You are a Senior Python Programmer / Refactoring Expert."
+            "You must fix the code based on the Reviewer's feedback while maintaining structural integrity."
+
+            "\n\n【ANTI-LAZINESS & IMPLEMENTATION RULE】(CRITICAL)"
+            "\n- You MUST write the ACTUAL, complete logic for any missing features flagged by the Reviewer."
+            "\n- DO NOT use placeholders like `pass`, `...`, or `# TODO: implement this`. If a UI panel or a timer is missing, YOU must write the Pygame rendering and update logic for it."
+
+            "\n\n【DEFENSIVE CODING RULES】"
+            "\n1. **Inheritance**: Always use `def __init__(self, ..., pool=None, **kwargs):` and pass them to super."
+            "\n2. **Safe Retrieval**: Use the pattern `config.get_prop('Entity', 'Key', default_value)` to prevent NoneType math errors."
+            "\n3. **Safe Iteration**: Use `groups = kwargs.get('groups') or []` for any sprite group handling."
+            "\n4. **Asset Reliability**: Use `os.path.join(os.path.dirname(__file__), 'assets', filename)` for absolute path safety."
+            "\n5. **State Machine**: Ensure all `fsm.add()` calls occur in `Game.__init__` before any gameplay logic starts."
+            "\n6. AttributeError (Missing Methods): If a class lacks a method called by the FSM or another manager, identify the missing 'Delegation' logic (e.g., UIManager needs to pass events to Buttons)."
+            "\n7. Error Fixes: If feedback mentions FileNotFoundError, rename the target file to game_config.json. If feedback mentions AttributeError or NoneType, immediately add or {} to the failing dictionary retrieval."
+            "\n8. Scaling Fixes: Apply pygame.transform.scale using IMAGE_SCALE from config if the Reviewer flags oversized images."
+            "\n9. Transparency Fixes: Remove any `set_colorkey` calls and chain `.convert_alpha()` right after `pygame.image.load()`."
+            "\n10. Font Fixes: If buttons lack text, add `self.font = pygame.font.Font(None, 36)` and blit `self.font.render(text, True, (255,255,255))` in the draw method."
+
+            "\n\n【Constraints】"
+            "\n- DO NOT remove `self.game_active` or RAG module imports."
+            "\n- DO NOT add explanatory text or markdown blocks."
+            "\n- Output ONLY the complete fixed Python code."
+
+            f"\n\n【Reviewer Feedback】\n{reviewer_feedback}"
+            f"\n\n【Current Code】\n{current_code}"
         )
         
         # TODO: 
@@ -119,50 +159,58 @@ def generate_py(user_prompt: str):
     
     # 2. Game Technical Planner
     system_instruction_planner = (
-        "You are a Senior Technical Planner proficient in Python Pygame."
-        "Your task is to write a detailed technical design document based on 'User Requirements' and 'Reference Code'."
+        "You are a Senior Technical Architect. Your goal is to produce a **DENSE technical specification**."
+        "Avoid introductory filler. Go straight to technical facts."
+
+        "\n\n### 1. MANDATORY MENU SYSTEM (STRICT)"
+        "\n- **Startup Menu**: MUST implement EXACTLY 3 buttons: 「GAME START」, 「RULES」, 「QUIT」."
+        "\n- **Pause Menu (P/ESC)**: MUST implement EXACTLY 4 buttons: 「CONTINUE」, 「RESTART」, 「BACK TO MAIN MENU」, 「RULES」."
+
+        "\n\n### 2. ASSET TAXONOMY & MAPPING (CRITICAL)"
+        "\n- **Classification**: [background] is strictly for map/floor/wall tiles. [sprite] is for ALL other assets (Entities, UI, Buttons) to allow background removal."
+        "\n- **Naming convention**: Filenames MUST match `[category]name.png` EXACTLY. NO leading/trailing spaces (e.g., `[sprite]player.png`)."
+
+        "\n\n### 3. TECHNICAL ARCHITECTURE"
+        "\n- **RAG Integration**: Explicitly state which modules (ObjectPool, SpatialGrid) handle which logic."
+        "\n- **JSON Properties**: Define constants for Speed, HP, and Cooldown using UPPER_SNAKE_CASE."
+
+        "\n\n### 4. GAMEPLAY LOGIC"
+        "\n- **Win/Loss Conditions**: Define logic (e.g., `enemy_count == 0` for level clear)."
+        "\n- **Hitbox Rule**: Specify hitboxes are 20% smaller than visual assets for 'Juicy' feel."
+
+        "\n\n### 5. DYNAMIC IMAGE SCALING (MATHEMATICAL RULE)"
+        "\n- **Base Resolution**: Assume ALL generated visual assets are 1024x1024 pixels."
+        "\n- **IMAGE_SCALE Calculation**: You MUST logically assign a float for EVERY entity based on a 1280x720 screen."
+        "\n  - Player/Enemy: ~0.08 (approx 80px)."
+        "\n  - Projectiles/Items: ~0.02 (approx 20px)."
+        "\n  - UI Buttons: ~0.15."
+        "\n  - Backgrounds: ~1.25 (to fill screen)."
+
         f"\n\n【Reference Modules (RAG Context)】\n{rag_context}\n\n"
-        
-        "【Output Format Specifications】"
-        "Divide the response into two parts:"
-        "**Part 1: Technical Design Document (Markdown format)**"
-        "   - Use English to explain the game architecture, logic, and design philosophy in detail."
-        "   - Must include the following sections:"
-        "     1. **Game Concept & Architectural Analysis**: How to apply RAG modules (e.g., Camera, Collision) to achieve requirements."
-        "     2. **Game Flow**: Detailed description from 'Main Menu' -> 'Gameplay' -> 'Pause' -> 'Result (Win/Loss)' -> 'Restart'."
-        "     3. **Controls & UI Design**: Key mappings (including P/ESC for pause), HUD display info, and menu button layout."
-        "     4. **Entity Values**: Concrete values for Player, Enemies, Buildings (Speed, HP, Price, etc.)."
-        
-        "**Part 2: Structured Parameter Configuration (JSON Code Block)**"
-        "   - Provide a JSON block at the end of the document for subsequent script parsing."
-        "   - **Must** wrap the JSON in a Markdown code block as follows:"
-        "     ```json"
-        "     {"
-        "       \"game_name\": \"...\", "
-        "       ... (follow the Schema below)"
-        "     }"
-        "     ```"
 
-        "【JSON Schema Requirements】"
-        "The JSON structure must match:"
-        "{"
-        "  \"game_name\": \"Game Title\","
-        "  \"technical_architecture\": {"
-        "    \"used_modules\": [\"List required RAG module filenames, e.g., mouse_camera.py\"],"
-        "    \"implementation_details\": \"Summary of technical integration focus\""
-        "  },"
-        "  \"game_rules\": [\"List of rules...\"],"
-        "  \"entities\": ["
-        "    {\"name\": \"Player\", \"variables\": \"...\"},"
-        "    {\"name\": \"Enemy\", \"variables\": \"...\"}"
-        "  ]"
-        "}"
+        "【Output Format: Part 1 - Technical Spec (Markdown)】"
+        "\n1. Architecture Mapping: List which RAG function will be used for which feature."
+        "\n2. State Logic Table: Define states (Menu, Playing, Pause, Rules, GameOver) and their specific transition triggers."
+        "\n3. Asset & Entity Table: For each entity/UI element, list its EXACT filename (with `[sprite]` or `[background]`) and its numeric properties (Speed, HP, etc.). **DO NOT leave these to the programmer's imagination.**"
+        "\n4. Collision Matrix: Define exactly what happens when A hits B."
+        "\n5. Architecture: Use ObjectPool for projectiles and CameraScrollGroup for centering."
 
-        "【Core Planning Requirements】"
-        "1. **Win/Loss Conditions**: Must be explicitly defined (e.g., Tower destroyed = Loss, Kill count reached = Win)."
-        "2. **Mandatory Pause Mechanism**: Must implement 'P' or 'ESC' to pause, showing a menu (Resume/Restart/Rules/Exit)."
-        "3. **Complete Menu System**: Must include Main Menu (Start, Quit, Rules) and Post-game Results screen with 'Restart' support."
-        "4. **RAG Module Application**: Accurately list required files (e.g., `mouse_camera.py`, `collision.py`) in `used_modules`."
+        "\n\n【Output Format: Part 2 - Parameters (JSON Code Block)】"
+        "\n- The JSON configuration file MUST be implicitly designed for the filename `game_config.json`."
+        "\n- **IMAGE_SCALE (CRITICAL)**: You MUST include this key for EVERY entity."
+        "\n- **Asset Tags**: Every image MUST start with `[sprite]` or `[background]`. No extra spaces."
+        "\n Follow the Schema below."
+        "\n```json"
+        "\n{"
+        "\n  \"game_name\": \"...\", "
+        "\n  \"config\": {\"FPS\": 60, \"SCREEN_SIZE\": [1280, 720]},"
+        "\n  \"entities\": [ { \"name\": \"Player\", \"image\": \"[sprite]mage.png\", \"properties\": {\"IMAGE_SCALE\": 0.08} } ]"
+        "\n}"
+        "\n```"
+
+        "\n\n【Core Constraints】"
+        "\n- Use **Bullet Points** only. No paragraphs."
+        "\n- Mandatory: Implement 'ESC' for Pause logic."
     )
     
     # New SDK Call for Planner
@@ -179,6 +227,16 @@ def generate_py(user_prompt: str):
     doc_path = os.path.join(folder, doc_filename)
     with open(doc_path, "w", encoding="utf-8") as f:
         f.write(response_planner.text)
+
+    json_match = re.search(r'```json\n(.*?)\n```', response_planner.text, re.DOTALL)
+    if json_match:
+        json_content = json_match.group(1)
+        json_path = os.path.join(folder, "game_config.json")
+        with open(json_path, "w", encoding="utf-8") as f:
+            f.write(json_content)
+        print("✅ Successfully extract and store game_config.json")
+    else:
+        print("⚠️ Warning! Extract JSON file failed.")
 
     # 3. Art Director & Asset Generator
     print("🎨 [System] Passing design document to Art Director Agent...")
@@ -198,65 +256,59 @@ def generate_py(user_prompt: str):
 
     # 4. Game Architect (Designer)
     system_game_designer = (
-        "You are a Senior Python Pygame Game Architect. Tasked with writing single-file game code based on a JSON design document and reference modules."
+        "You are a Senior Pygame Architect. Your goal is to build a high-polish, robust single-file game. "
+        "Output the complete Python code wrapped in a markdown code block. Do not add any explanatory text before or after the code block."
+        "Before writing the code, you MUST output a <THINKING> block. Explicitly list every mechanic requested in the Design Document and state exactly which class and method will implement them."
+
+        "\n\n### 1. INITIALIZATION SEQUENCE (CRITICAL)"
+        "You MUST follow this order in `Game.__init__` to prevent 'Purple Screen' and 'NoneType' errors:"
+        "\n1. `pygame.init()`."
+        "\n2. **Data First**: Call a private method `self._read_json_only()` (which YOU must define) to load 'game_config.json' with `encoding='utf-8'` into `GameConfig`."
+        "\n3. **Display Second**: Call `pygame.display.set_mode()` using values from the loaded config."
+        "\n4. **Assets Third**: Call `asset_manager.load_assets(data)`. This ensures `.convert_alpha()` works correctly."
+
+        "\n\n### 2. DATA SAFETY & NULL PROTECTION"
+        "\n- **AttributeError Prevention**: When fetching entity data, ALWAYS use `player_data = config.get_entity('Player') or {}`. NEVER assume dictionary lookups succeed."
+        "\n- **Property Guard**: Use `config.get_prop('Name', 'Key', default_value)` to ensure math operations NEVER hit `None`."
+        "\n- **Zero-Argument Init**: `Game.__init__(self)` MUST NOT require arguments."
+        "\n- **Pygame Rect Attributes**: NEVER use `rect.center.x` or `rect.center.y`. You MUST use `rect.centerx` or `rect.centery`. Tuples do not have .x or .y attributes in Python."
         
-        "【CRITICAL INSTRUCTIONS】"
-        "1. **RAG Module Integration (Strictly Enforced)**:"
-        "   - Directly include and use provided modules (ObjectPool, GameSprite, etc.)."
-        "   - **Strictly Prohibited** from modifying module core logic; only inherit or call them."
-        
-        "2. **Architecture & Dependency Injection**:"
-        "   - **Object Pool Separation**: `ObjectPool` is ONLY for `get/release`. Rendering MUST use `pygame.sprite.Group`."
-        "     - Initialization must pass both `pool` (production) and `group` (rendering)."
-        "     - Example: `def __init__(self, projectile_pool, projectiles_group): ...`"
-        "     - Ensure every function is correctly declared with proper type-hinted parameters."
-        "   - **State Machine Safety**: When `change_state` calls `enter(**kwargs)`, **must** use `kwargs.setdefault()` to avoid parameter conflicts."
+        "\n\n### 3. ASSET PROCESSING (GREEN SCREEN & SCALE)"
+        "\n- **Alpha Transparency**: DO NOT use set_colorkey(). Since assets are pre-processed with rembg, they already have an alpha channel."
+        "\n- **Loading Rule**: You MUST use `image = pygame.image.load(path).convert_alpha()` for ALL assets. This ensures perfect transparency without color collision bugs.\n"
+        "\n- **Scaling**: Retrieve `IMAGE_SCALE` from JSON. Use `pygame.transform.scale()` inside the `AssetManager` or Entity `__init__`. Do not hardcode scale values.\n"
 
-        "3. **Physics & Loop Stability**:"
-        "   - **Delta Time Clamping (Anti-Tunnelling)**: In `Game.run`, you **MUST** limit the maximum value of `dt`."
-        "     - Mandatory code: `dt = min(self.clock.tick(FPS) / 1000.0, 0.05)` (Cap at 0.05s) to prevent teleportation during lag or window dragging."
-        "   - **Floating Point Coordinates**: Forbidden to modify `rect.x/y` directly. Maintain `self.pos` (Vector2) and sync to `rect` after calculations."
-        "   - **Separated Axis Movement** (Prevent clipping/sliding):"
-        "     - **Strictly Prohibited** from updating both X and Y before checking collisions."
-        "     - **Mandatory Order**: 1. Move X -> 2. Check/Fix X Collision -> 3. Move Y -> 4. Check/Fix Y Collision."
+        "\n\n### 4. JUICY PHYSICS & GAME FEEL"
+        "\n- **Axis Separation**: Move X -> Check X Collision -> Move Y -> Check Y Collision. Use `pygame.math.Vector2` for `self.pos`."
+        "\n- **Hitboxes**: Hitboxes MUST be 20% smaller than visual sprites."
 
-        "4. **Automated Test Hook**:"
-        "   - `Game.__init__(self)`: MUST NOT take any required positional arguments other than `self`. (e.g., Do NOT add `game_name` as a parameter. Hardcode it inside instead)."
-        "   - `Game.__init__`: Default `self.game_active = False`."
-        "   - `Game.run()`: MUST check `if self.game_active:` at the start. If True, **skip menu** and start game directly."
-        "   - `if __name__ == '__main__':`: Explicitly set `game.game_active = False` to show menu."
+        "\n\n### 5. FSM SEQUENCE & MENUS"
+        "\n- **Lazy FSM**: `FSM` MUST NOT call `self.change()` inside its `__init__`."
+        "\n- **Registration First**: Use `fsm.add()` to register ALL states BEFORE calling `fsm.change()`."
+        "\n- **Menu Buttons**: Startup Menu (3 buttons), Pause Menu P/ESC (4 buttons)."
+        "\n- **UI Delegation**: Any UIManager MUST implement a `handle_event` that iterates and calls `handle_event()` on all active UI elements."
+        "\n- **State Transition Rule**: Strict strictly use `self.fsm.change('STATE_NAME')` with NO extra keyword arguments (e.g., NO `return_to_state`)."
+        "\n- **Resume Logic**: `PlayingState.enter()` MUST NOT call a full game reset (like `_setup_new_game()`). Game initialization should only happen when transitioning from MENU or RESTART."
 
-        "5. **UI & Display Standards**:"
-        "   - **Chinese Fonts**: Use `pygame.font.match_font('microsoftjhenghei')` or `simhei` to avoid encoding issues."
-        "   - **Cursor**: Never hide the mouse (`set_visible(False)`) unless a custom cursor is implemented."
-        "   - **Frustum Culling**: Retain at least a 100px buffer (Margin)."
-        "   - **Initial Camera**: Camera must immediately focus on player base during `reset_game`."
+        "\n\n### 6. ASSET MANAGEMENT & EXACT FILENAMES"
+        "\n- **Exact Pathing**: Use `os.path.join(os.path.dirname(__file__), 'assets', filename)`."
+        "\n- **No Prefixes**: DO NOT add 'Graphic/'. Use filenames exactly as listed."
+        f"\n- **Filenames**: {available_assets_str}"
+    
+        "\n\n### 7.【CRITICAL UI RENDERING RULE】"
+        "\n1. AI-generated images for buttons are BLANK FRAMES. They do NOT contain text."
+        "\n2. YOU MUST write Python code in your UI classes to dynamically render text using `pygame.font.Font`."
+        "\n3. In the `draw` method, AFTER blitting the button's image, render the text and center it perfectly (`text_rect.center = self.rect.center`)."
 
-        "6. **Menu System**:"
-        "   - **Main Menu**: Start, Rules, Quit."
-        "   - **Pause Menu** (P/ESC): Resume, Restart, Rules, Back to Main Menu."
-        "   - **Game Over**: Show SUCCESS/FAIL, including Restart, Back to Main Menu, Quit."
-        "   - Ensure the menu can switch smoothly under every states"
-
-        "【Available Image Assets】\n"
-        f"You MUST use the following image files located in the 'assets/' folder: {available_assets_str}\n\n"
-        "1. **Loading Images & Pathing**: You MUST construct the robust path using `base_dir = os.path.dirname(os.path.abspath(__file__))` and `path = os.path.join(base_dir, 'assets', filename)`. Then use `pygame.image.load(path)`. DO NOT use simple relative paths."
-        "2. **Fallback Colors**: If an image fails to load, create a fallback Surface. Use `(40, 40, 40)` for backgrounds and `(255, 0, 255)` for entities so they don't blend together."
-        
-        "【Asset Usage Rules (Strictly Enforced)】\n"
-        "1. **Loading Images**: Load images using `pygame.image.load(os.path.join('assets', filename)).convert()`.\n"
-        "2. **Transparency (CRITICAL)**: Stable Diffusion generated images with a white background. You MUST remove the white background by calling `.set_colorkey((255, 255, 255))` on every loaded image.\n"
-        "3. **Scaling**: Scale the image to match the entity's `rect` size using `pygame.transform.scale`.\n"
-        "4. **Fallback**: If an entity doesn't have a corresponding image in the list, fallback to drawing geometric pattern like rectangle or circle (`pygame.draw.rect`).\n"
-        "5. Pathing: Use `os.path.join(base_dir, 'assets', filename)` for robust cross-platform pathing.\n"
-
-        "【Input Processing】"
-        "Parse the input JSON (`technical_architecture`, `game_rules`) and produce a single complete Python file. Import pygame. No Markdown formatting."
+        "\n\n### 8. EXECUTION"
+        "\nParse JSON logic -> Apply Constructor Contract -> Apply Data Safety -> Output complete Python code."
+        "\n\nCRITICAL: Start your code response directly with the python markdown tag and `import pygame`. Do not say 'Here is the code'."
+        "\n- When you retrieve an entity from an ObjectPool (e.g., `pool.get()`), you MUST immediately add it to its corresponding Pygame sprite groups (e.g., `self.enemies.add(alien)`). If it is not added to the groups, it will never render or update."
     )
     
     # SDK Call for Architect
     response_designer = safe_generate_content(
-        model_id = MODEL_NORMAL,
+        model_id = MODEL_SMART,
         contents=f"{system_game_designer}\n\nDesign Document: {response_planner.text}",
         config=types.GenerateContentConfig(safety_settings=safety_settings)
     )
@@ -278,24 +330,38 @@ def art_director_plan_assets(design_doc: str) -> list:
     print("👩‍🎨 [Art Director] Analyzing design document for required visual assets...")
     
     art_prompt = (
-        "You are a Senior Game Art Director. Your goal is to design visual assets for a high-quality game.\n"
-        "Generate a JSON array of objects representing game assets. Each object must contain highly detailed prompts for SDXL.\n\n"
-        "【Output Rules】\n"
-        "1. Output ONLY a valid JSON array. No markdown blocks, no conversational text.\n"
-        "2. Each asset MUST contain: 'filename', 'pos_prompt', 'neg_prompt', and 'size'.\n"
-        "3. Resolution standard for SDXL is [1024, 1024].\n\n"
-        "【Detailed Prompting Guidelines】\n"
-        "- 'pos_prompt': A paragraph describing subject appearance, materials, pose, lighting, and 16-bit pixel art style. Be extremely descriptive.\n"
-        "- 'neg_prompt': List unwanted elements like 'gradients', '3D shading', 'blur', 'realistic photo', or 'watermark'.\n\n"
-        "【JSON Structure Example】\n"
+        "You are a Game Art Director. Plan a JSON array for SDXL assets."
+        "【Prompt Rule】: Use COMMA-SEPARATED TAGS for 'pos_prompt'. Focus on visual keywords only."
+        "Example: 'knight, 16-bit pixel art, silver armor, blue runes, glowing, pure white background, flat lighting'."
+        "【Constraints】: No full sentences. Max 30 words per prompt. Ensure 'size' is [1024, 1024]."
+        
+        "\n\nCRITICAL TAXONOMY: You MUST prefix every filename EXACTLY with either [background] or [sprite]. \n"
+        "- Use [background] ONLY for static map tiles, floors, and walls. DO NOT add any solid color background tags to them.\n"
+        "- Use [sprite] for EVERYTHING else (including Characters, Enemies, Projectiles, UI Panels, Buttons, and Items) because they require background removal.\n"
+        
+        "CRITICAL CHROMA KEY RULE: For EVERY [sprite] asset, you MUST append 'isolated on a pure white background' to its 'pos_prompt'. rembg will handle the transparency conversion.\n"
+        "CRITICAL FORMATTING: There MUST NOT be any leading or trailing spaces in the prefix or the filename (e.g., [sprite]button.png, NOT [sprite] button.png ).\n"
+        
+        "\n\nCRITICAL UI RULE: For any asset that is a button, panel, or menu (e.g., filenames containing 'button' or 'ui'), you MUST generate BLANK frames ready for text overlay.\n"
+        "- Add 'blank frame, empty container, no text, no icons, centered UI element' to the 'pos_prompt'.\n"
+        "- You MUST ADD 'text, letters, words, alphabet, signature, watermark, typography' to the 'neg_prompt' to strictly prevent the AI from generating gibberish text.\n"
+
+        "\n\n【Asset Classification Rules】:\n"
+        "1. [background]: Static tiles/floors. PROMPT: '16-bit pixel art texture, top-down, seamless, full frame, no borders'.\n"
+        "2. [sprite]: Characters, UI, Items. PROMPT: MUST include isolated on a pure white background.\n"
+        "【Naming Convention】: Use '[sprite]name.png' or '[background]name.png'. NO spaces between tag and name.\n"
+
+        "\n\n【REQUIRED JSON SCHEMA】\n"
+        "You MUST output a valid JSON array. Each object MUST contain EXACTLY these keys: 'filename', 'pos_prompt', 'neg_prompt', 'size'.\n"
+        "Example:\n"
         "[\n"
         "  {\n"
-        "    \"filename\": \"hero.png\",\n"
-        "    \"pos_prompt\": \"high-quality 16-bit pixel art of a young knight, silver armor with blue glowing runes, holding a heavy claymore, heroic standing pose, sharp pixel edges, dynamic rim lighting, isolated on white background\",\n"
-        "    \"neg_prompt\": \"realistic, 3d render, smooth gradients, blurry, photographic, messy pixels, text\",\n"
+        "    \"filename\": \"[sprite]player_ship.png\",\n"
+        "    \"pos_prompt\": \"pixel art spaceship, silver, isolated on a pure white background, flat lighting, no shadows on floor\",\n"
+        "    \"neg_prompt\": \"blurry, low quality, 3d render\",\n"
         "    \"size\": [1024, 1024]\n"
         "  }\n"
-        "]"
+        "]\n"
         f"\n\n【Game Design Document】\n{design_doc}"
     )
     

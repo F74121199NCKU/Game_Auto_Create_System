@@ -12,8 +12,8 @@ client = genai.Client(api_key=API_KEY)
 # Global 
 EMBEDDING_MODEL     = "models/gemini-embedding-001" 
 MODEL_NORMAL        = 'gemini-2.5-flash'
-MODEL_SMART         = 'gemini-3-flash-preview'
-CHAOS_PAYLOAD       = CHAOS_PAYLOAD = """
+MODEL_SMART         = 'gemini-3.1-pro-preview'
+CHAOS_PAYLOAD = """
 # --- [INJECTED SAFE FUZZER CODE] START ---
 import sys as _sys
 import os as _os
@@ -98,8 +98,11 @@ def _fuzzer_loop():
             _pygame.time.wait(30)
         except SystemExit:
             break
-        except:
-            pass
+        except Exception as e:
+            import traceback
+            print(f"[FUZZ] CRASH DETECTED: {e}", flush=True)
+            traceback.print_exc()
+            _os._exit(1)  # Force exit with error code so Executor catches it
 
 import threading
 _t = threading.Thread(target=_fuzzer_loop, daemon=True)

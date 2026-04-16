@@ -1,5 +1,6 @@
 import os
 import gc
+from rembg import remove                                                            #type:ignore
 import torch                                                                        #type:ignore
 from diffusers import StableDiffusionXLPipeline, EulerAncestralDiscreteScheduler    #type:ignore
 
@@ -57,6 +58,9 @@ def generate_game_asset(item_name: str, agent_prompt: str, agent_negative_prompt
             guidance_scale=7.5,
             cross_attention_kwargs={"scale": 0.75} 
         ).images[0]
+
+        if item_name.startswith("[sprite]"):
+            image = remove(image, alpha_matting=False, post_process_mask=True)
 
         image.save(output_path)
         print(f"✨ Successfully saved to: {output_path}")
