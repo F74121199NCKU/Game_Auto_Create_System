@@ -2,7 +2,7 @@ import sys
 import subprocess
 import os
 import time
-from google.genai import types      #type: ignore
+from google.genai import types                      #type:ignore
 
 # Import modules
 # Ensure Project.toolbox.config contains the 'client' object we defined earlier
@@ -66,10 +66,16 @@ def error_solving(error_msg: str, code_content: str, max_turns: int = 1) -> str:
 
         # 1. Tester Agent (Instructor) analyzes the crash
         tester_prompt = (
-            "You are a Senior Software Test Engineer."
+            "You are a Senior Software Test Engineer (QA).\n"
             "Analyze the following Python Traceback error against the source code.\n"
-            "Identify the EXACT line and cause of the crash. Give specific instructions on how to fix it.\n"
-            "DO NOT WRITE THE FULL REPAIRED CODE. Just provide the diagnosis and action plan."
+            "Identify the EXACT line and cause of the crash. Give specific instructions on how to fix it.\n\n"
+            "【COMMON PYGAME PITFALLS TO CHECK】\n"
+            "1. Rect Tuple Error: `rect.center` is a tuple. It DOES NOT have `.x` or `.y`. Must suggest using `rect.centerx` or `rect.centery`.\n"
+            "2. Transparency Error: AI often wrongly uses `set_colorkey`. If transparency is an issue, suggest using `.convert_alpha()`.\n"
+            "3. State Machine Args: `fsm.change()` should NOT receive extra keyword arguments like `return_to_state`.\n"
+            "4. Missing Groups: If an entity is retrieved from an ObjectPool, check if it was properly added to a Pygame sprite group.\n\n"
+            "【YOUR TASK】\n"
+            "DO NOT WRITE THE FULL REPAIRED CODE. Just provide the diagnosis and an actionable step-by-step fix plan.\n"
             f"\n\n【Traceback Error】\n{error_msg}\n\n【Current Source Code】\n{current_code}"
         )
         
@@ -86,14 +92,16 @@ def error_solving(error_msg: str, code_content: str, max_turns: int = 1) -> str:
 
         # 2. Programmer Agent (Assistant) fixes the code
         programmer_prompt = (
-            "You are a Python Runtime Exception Specialist (Programmer)."
-            "You just received a bug report and action plan from the Tester.\n"
+            "You are a Senior Python Programmer / Runtime Exception Specialist.\n"
+            "You just received a bug report and action plan from the Tester.\n\n"
             f"【Tester Diagnosis】\n{tester_feedback}\n\n"
             f"【Current Source Code】\n{current_code}\n\n"
             "【CRITICAL RULES】\n"
-            "1. Fix the bug based on the Tester's diagnosis.\n"
-            "2. DO NOT remove existing Object-Oriented structure or automated test hooks (`self.game_active`).\n"
-            "3. Output ONLY the fixed complete Python code without markdown tags or explanations."
+            "1. Fix the bug EXACTLY based on the Tester's diagnosis.\n"
+            "2. DO NOT remove existing Object-Oriented structure, `self.game_active`, or RAG-imported automated test hooks.\n"
+            "3. Defensive Pygame: NEVER use `rect.center.x` or `rect.center.y`. Always use `rect.centerx` or `rect.centery`.\n"
+            "4. Output format: Return the complete, fixed Python code wrapped in a ```python markdown block.\n"
+            "5. DO NOT add any conversational text, pleasantries, or explanations outside the code block."
         )
 
         programmer_response = safe_generate_content(
