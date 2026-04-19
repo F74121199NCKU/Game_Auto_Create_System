@@ -38,21 +38,26 @@ except ImportError as e:
 
 class AutoStartGame(Game):
     def __init__(self, *args, **kwargs):
-        # 嘗試捕捉並傳遞參數，如果父類別(Game)真的被亂加了參數，至少我們嘗試餵給它一個預設值
         try:
             super().__init__(*args, **kwargs)
         except TypeError as e:
             if "game_name" in str(e):
                 super().__init__(game_name="Auto Test Game", *args, **kwargs)
             else:
-                raise e # 如果是其他未知的錯誤，就乖乖報錯交給 Fuzzer 抓
+                raise e 
                 
-        # Force start settings to bypass menus
-        self.game_active = True 
-        self.paused = False
-        if hasattr(self, 'show_menu'):
-            self.show_menu = False
+        # Make sure the game initializes entities properly when entering PLAYING state
+        if hasattr(self, 'needs_restart'):
+            self.needs_restart = True
 
 if __name__ == "__main__":
     game = AutoStartGame()
+    
+    # Injecting the PLAYING state directly into the FSM before running
+    print("📍 [Debug Launcher] Injecting 'PLAYING' state to bypass menus...")
+    try:
+        game.fsm.change('PLAYING')
+    except Exception as e:
+        print(f"⚠️ Warning: Could not inject PLAYING state directly: {e}")
+        
     game.run()
