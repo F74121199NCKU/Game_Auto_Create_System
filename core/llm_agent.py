@@ -57,7 +57,6 @@ def multi_agent_code_review(initial_code: str, design_doc: str, max_turns: int =
             f"\n\nCode:\n{current_code}"
         )
         
-        # TODO: Call Gemini (model=MODEL_SMART) to get reviewer_feedback
         reviewer_feedback = safe_generate_content(
             model_id=MODEL_SMART,
             contents=reviewer_prompt,
@@ -314,6 +313,11 @@ def generate_py(user_prompt: str):
         "\n      self.fsm.change('STARTUP_MENU')"
         "\n  ```"
         "\n- This allows an external test script to inject a state (like 'PLAYING') before calling `run()`."
+
+        "\n\n### 10. SPRITE INITIALIZATION ORDER"
+        "\n- NEVER pass `None` to `super().__init__` if the entity has an image or animation. This causes the hitbox to be incorrectly sized at 32x32."
+        "\n- If a class uses an `Animator` or loads a SpriteSheet, you MUST initialize the animator and get the `initial_image` BEFORE calling `super().__init__(initial_image, pos, ...)`."
+        "\n- Only call `super().__init__` AFTER you have the correct visual surface, so the `rect` and `hitbox` correctly wrap the entity."
     )
     
     # SDK Call for Architect

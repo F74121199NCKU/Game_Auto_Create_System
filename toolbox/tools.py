@@ -16,7 +16,7 @@ def code_to_py(code, filename = "generated_app.py", folder = "dest"):
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(code)
         
-    print(f"? File saved to: {file_path}")
+    print(f" ✅ File saved to: {file_path}")
     return file_path 
 
 # Clean redundant Markdown formatting from LLM response

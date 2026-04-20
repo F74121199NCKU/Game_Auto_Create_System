@@ -86,8 +86,8 @@ def error_solving(error_msg: str, code_content: str, max_turns: int = 1) -> str:
         ).text.strip()
         
         print(f"🎯 Tester Diagnosis:\n{tester_feedback}")
-        print("⏳ Waiting for API cooldown (15 seconds)...")
-        time.sleep(15)
+        #print("⏳ Waiting for API cooldown (15 seconds)...")
+        #time.sleep(15)
 
 
         # 2. Programmer Agent (Assistant) fixes the code

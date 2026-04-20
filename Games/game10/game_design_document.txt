@@ -1,0 +1,275 @@
+### Technical Specification: Starfire Defender
+
+#### 1. Architecture Mapping
+*   **`collision.py` (CollisionManager):**
+    *   `apply_sprite_vs_group`: Player-Enemy, Player-EnemyProjectile.
+    *   `apply_group_vs_group`: Player Projectile-Enemy, Player Projectile-Enemy Projectile.
+*   **`object_pool.py` (ObjectPool):**
+    *   Management of Player Plasma Bolts instances.
+    *   Management of Red Alien Scout instances.
+    *   Management of Explosion visual effect instances.
+*   **`camera_player_center.py` (CameraScrollGroup):**
+    *   Primary camera system for centering the Player spaceship within the screen view.
+    *   Handles background and sprite rendering with Y-sort for depth.
+*   **`sprite_manager.py` (GameSprite):**
+    *   Base class for all game entities including Player, Enemies, Projectiles, UI elements, and Buttons.
+*   **`tile_map.py` (MazeManager):**
+    *   NOT utilized for core gameplay map generation due to the space shooter genre.
+*   **`mouse_camera.py` (MouseCameraGroup):**
+    *   NOT utilized as the camera follows the player.
+*   **SpatialGrid:**
+    *   NOT utilized due to lack of reference implementation.
+
+#### 2. State Logic Table
+*   **STATE: `MENU_STARTUP`**
+    *   **TRIGGERS:**
+        *   `UI_BUTTON_GAME_START_CLICKED` -> `PLAYING`
+        *   `UI_BUTTON_RULES_CLICKED` -> `MENU_RULES`
+        *   `UI_BUTTON_QUIT_CLICKED` -> `APPLICATION_EXIT`
+*   **STATE: `PLAYING`**
+    *   **TRIGGERS:**
+        *   `KEY_P_PRESSED` OR `KEY_ESC_PRESSED` -> `MENU_PAUSE`
+        *   `PLAYER_HEALTH_ZERO` -> `GAME_OVER`
+        *   `ALL_WAVES_CLEARED` OR `BOSS_DEFEATED` -> `GAME_WIN` (Placeholder for future expansion)
+*   **STATE: `MENU_PAUSE`**
+    *   **TRIGGERS:**
+        *   `UI_BUTTON_CONTINUE_CLICKED` OR `KEY_P_PRESSED` OR `KEY_ESC_PRESSED` -> `PLAYING`
+        *   `UI_BUTTON_RESTART_CLICKED` -> `PLAYING` (re-initialize game state)
+        *   `UI_BUTTON_BACK_TO_MAIN_MENU_CLICKED` -> `MENU_STARTUP`
+        *   `UI_BUTTON_RULES_CLICKED` -> `MENU_RULES`
+*   **STATE: `MENU_RULES`**
+    *   **TRIGGERS:**
+        *   `UI_BUTTON_BACK_CLICKED` OR `KEY_ESC_PRESSED` -> Previous State (e.g., `MENU_STARTUP` or `MENU_PAUSE`)
+*   **STATE: `GAME_OVER`**
+    *   **TRIGGERS:**
+        *   `UI_BUTTON_RESTART_CLICKED` -> `PLAYING` (re-initialize game state)
+        *   `UI_BUTTON_MAIN_MENU_CLICKED` -> `MENU_STARTUP`
+
+#### 3. Asset & Entity Table
+*   **Global Constants:**
+    *   `PLAYER_MAX_HP = 3`
+    *   `ENEMY_SCOUT_HP = 1`
+    *   `PLAYER_SPEED = 300.0` (pixels per second)
+    *   `ENEMY_SCOUT_SPEED = 150.0` (pixels per second)
+    *   `PLAYER_PROJECTILE_SPEED = 600.0` (pixels per second)
+    *   `ENEMY_PROJECTILE_SPEED = 400.0` (pixels per second)
+    *   `PLAYER_FIRE_COOLDOWN = 0.2` (seconds)
+    *   `ENEMY_FIRE_COOLDOWN = 1.5` (seconds)
+
+*   **Entities:**
+    *   **Name:** Player Ship
+        *   **Filename:** `[sprite]player_spaceship.png`
+        *   **Properties:**
+            *   `IMAGE_SCALE`: `0.08`
+            *   `MAX_HP`: `PLAYER_MAX_HP`
+            *   `SPEED`: `PLAYER_SPEED`
+            *   `FIRE_COOLDOWN`: `PLAYER_FIRE_COOLDOWN`
+    *   **Name:** Red Alien Scout
+        *   **Filename:** `[sprite]enemy_scout.png`
+        *   **Properties:**
+            *   `IMAGE_SCALE`: `0.08`
+            *   `HP`: `ENEMY_SCOUT_HP`
+            *   `SPEED`: `ENEMY_SCOUT_SPEED`
+            *   `FIRE_COOLDOWN`: `ENEMY_FIRE_COOLDOWN`
+    *   **Name:** Blue Plasma Bolt (Player Projectile)
+        *   **Filename:** `[sprite]plasma_bolt_blue.png`
+        *   **Properties:**
+            *   `IMAGE_SCALE`: `0.02`
+            *   `SPEED`: `PLAYER_PROJECTILE_SPEED`
+    *   **Name:** Red Energy Orb (Enemy Projectile)
+        *   **Filename:** `[sprite]energy_orb_red.png`
+        *   **Properties:**
+            *   `IMAGE_SCALE`: `0.02`
+            *   `SPEED`: `ENEMY_PROJECTILE_SPEED`
+    *   **Name:** Explosion Effect
+        *   **Filename:** `[sprite]explosion_sheet.png` (Sprite Sheet)
+        *   **Properties:**
+            *   `IMAGE_SCALE`: `0.08`
+            *   `ANIMATION_FRAMES`: `X` (Specific value to be determined by asset)
+            *   `ANIMATION_SPEED`: `0.05` (seconds per frame)
+    *   **Name:** Game Background (Space)
+        *   **Filename:** `[background]space_nebula.png`
+        *   **Properties:**
+            *   `IMAGE_SCALE`: `1.25` (for horizontal parallax scrolling)
+    *   **Name:** UI Score Display
+        *   **Filename:** N/A (Text rendering)
+        *   **Properties:**
+            *   `FONT_SIZE`: `32`
+            *   `COLOR`: `(255, 255, 255)`
+    *   **Name:** Button: Game Start
+        *   **Filename:** `[sprite]button_gamestart.png`
+        *   **Properties:**
+            *   `IMAGE_SCALE`: `0.15`
+    *   **Name:** Button: Rules
+        *   **Filename:** `[sprite]button_rules.png`
+        *   **Properties:**
+            *   `IMAGE_SCALE`: `0.15`
+    *   **Name:** Button: Quit
+        *   **Filename:** `[sprite]button_quit.png`
+        *   **Properties:**
+            *   `IMAGE_SCALE`: `0.15`
+    *   **Name:** Button: Continue
+        *   **Filename:** `[sprite]button_continue.png`
+        *   **Properties:**
+            *   `IMAGE_SCALE`: `0.15`
+    *   **Name:** Button: Restart
+        *   **Filename:** `[sprite]button_restart.png`
+        *   **Properties:**
+            *   `IMAGE_SCALE`: `0.15`
+    *   **Name:** Button: Back to Main Menu
+        *   **Filename:** `[sprite]button_backtomain.png`
+        *   **Properties:**
+            *   `IMAGE_SCALE`: `0.15`
+    *   **Name:** Button: Back (Rules screen)
+        *   **Filename:** `[sprite]button_back.png`
+        *   **Properties:**
+            *   `IMAGE_SCALE`: `0.10`
+
+#### 4. Gameplay Logic
+*   **Win Condition:**
+    *   `game_status = GAME_WIN` upon `all_waves_completed` or `boss_defeated`. (Future implementation)
+*   **Loss Condition:**
+    *   `game_status = GAME_OVER` when `player_spaceship.current_hp <= 0`.
+    *   Triggered by collision with `enemy_scout` or `enemy_projectile`.
+*   **Hitbox Rule:**
+    *   All entity hitboxes (collision `pygame.Rect`) MUST be calculated as 20% smaller than the visual `sprite.image.get_rect()` dimensions.
+    *   Implementation: `hitbox_rect = sprite.image.get_rect().inflate(-sprite.image.get_width() * 0.2, -sprite.image.get_height() * 0.2)`
+    *   This provides a 'juicy' feel by slightly forgiving near-misses.
+
+#### 5. Dynamic Image Scaling
+*   **Base Resolution:** All generated visual assets are `1024x1024` pixels.
+*   **Target Screen Resolution:** `1280x720` pixels.
+*   **`IMAGE_SCALE` Calculation (Factor applied to base `1024x1024` assets):**
+    *   `Player/Enemy`: `0.08` (results in approx. `81.92px` scaled dimension)
+    *   `Projectiles/Items`: `0.02` (results in approx. `20.48px` scaled dimension)
+    *   `UI Buttons`: `0.15` (results in approx. `153.6px` scaled dimension)
+    *   `Backgrounds`: `1.25` (results in `1280px` scaled dimension, matching screen width for parallax)
+
+#### 6. Core Architecture
+*   **Input Management:** Robust system abstracting keyboard (`W`, `A`, `S`, `D` / Arrow Keys for movement; `Spacebar` for fire) and gamepad controls.
+*   **UI Management System:** Dedicated module for rendering score, menu buttons, rules screen, and game over overlay.
+*   **Wave Management System:** Defines enemy spawn points, frequency, types, and overall difficulty progression.
+*   **Parallax Background System:** Layered background elements for depth, implemented within the `CameraScrollGroup` or a dedicated background manager.
+*   **Audio Management System:** Manages `pygame.mixer` for playback of firing, explosion, hit SFX, background music, and specific jingles (e.g., game over).
+*   **Particle System:** Utilizes a custom particle engine or integrated Pygame functionality for `Player Plasma Bolts`, `Enemy Explosions`, `Player Engine Trail`, and `Player Hit` feedback.
+*   **Game State Manager:** Centralized control for transitions between `MENU_STARTUP`, `PLAYING`, `MENU_PAUSE`, `MENU_RULES`, `GAME_OVER`.
+*   **Pause Logic:** The `KEY_ESC_PRESSED` event MUST trigger the `MENU_PAUSE` state from `PLAYING` and `MENU_STARTUP` from `MENU_PAUSE` (if no other 'back' option is present), or `MENU_RULES` from the `RULES` screen.
+
+---
+
+### Parameters: `game_config.json`
+
+```json
+{
+  "game_name": "Starfire Defender",
+  "config": {
+    "FPS": 60,
+    "SCREEN_SIZE": [1280, 720],
+    "PLAYER_MAX_HP": 3,
+    "ENEMY_SCOUT_HP": 1,
+    "PLAYER_SPEED": 300.0,
+    "ENEMY_SCOUT_SPEED": 150.0,
+    "PLAYER_PROJECTILE_SPEED": 600.0,
+    "ENEMY_PROJECTILE_SPEED": 400.0,
+    "PLAYER_FIRE_COOLDOWN": 0.2,
+    "ENEMY_FIRE_COOLDOWN": 1.5,
+    "UI_SCORE_FONT_SIZE": 32,
+    "UI_SCORE_COLOR": [255, 255, 255]
+  },
+  "entities": [
+    {
+      "name": "Player Ship",
+      "image": "[sprite]player_spaceship.png",
+      "properties": {
+        "IMAGE_SCALE": 0.08
+      }
+    },
+    {
+      "name": "Red Alien Scout",
+      "image": "[sprite]enemy_scout.png",
+      "properties": {
+        "IMAGE_SCALE": 0.08
+      }
+    },
+    {
+      "name": "Blue Plasma Bolt",
+      "image": "[sprite]plasma_bolt_blue.png",
+      "properties": {
+        "IMAGE_SCALE": 0.02
+      }
+    },
+    {
+      "name": "Red Energy Orb",
+      "image": "[sprite]energy_orb_red.png",
+      "properties": {
+        "IMAGE_SCALE": 0.02
+      }
+    },
+    {
+      "name": "Explosion Effect",
+      "image": "[sprite]explosion_sheet.png",
+      "properties": {
+        "IMAGE_SCALE": 0.08,
+        "ANIMATION_FRAMES": 6,
+        "ANIMATION_SPEED": 0.05
+      }
+    },
+    {
+      "name": "Game Background",
+      "image": "[background]space_nebula.png",
+      "properties": {
+        "IMAGE_SCALE": 1.25
+      }
+    },
+    {
+      "name": "UI Button - GAME START",
+      "image": "[sprite]button_gamestart.png",
+      "properties": {
+        "IMAGE_SCALE": 0.15
+      }
+    },
+    {
+      "name": "UI Button - RULES",
+      "image": "[sprite]button_rules.png",
+      "properties": {
+        "IMAGE_SCALE": 0.15
+      }
+    },
+    {
+      "name": "UI Button - QUIT",
+      "image": "[sprite]button_quit.png",
+      "properties": {
+        "IMAGE_SCALE": 0.15
+      }
+    },
+    {
+      "name": "UI Button - CONTINUE",
+      "image": "[sprite]button_continue.png",
+      "properties": {
+        "IMAGE_SCALE": 0.15
+      }
+    },
+    {
+      "name": "UI Button - RESTART",
+      "image": "[sprite]button_restart.png",
+      "properties": {
+        "IMAGE_SCALE": 0.15
+      }
+    },
+    {
+      "name": "UI Button - BACK TO MAIN MENU",
+      "image": "[sprite]button_backtomain.png",
+      "properties": {
+        "IMAGE_SCALE": 0.15
+      }
+    },
+    {
+      "name": "UI Button - BACK",
+      "image": "[sprite]button_back.png",
+      "properties": {
+        "IMAGE_SCALE": 0.10
+      }
+    }
+  ]
+}
+```

@@ -1,5 +1,5 @@
 from google import genai
-from google.genai import types
+from google.genai import types              #type:ignore
 import sys
 import os
 import re

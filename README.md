@@ -191,3 +191,4 @@ Below is a brief introduction to the key files that power the system:
 	* `def safe_generate_content`: This is a utility function of `tools.py` Prevent short-duration requests from exceeding RPM and provide a unified LLM function call mechanism.
 
 # Future Plans
+改進hitbox問題，以及增加更多RAG

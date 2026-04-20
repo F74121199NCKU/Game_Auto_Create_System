@@ -31,7 +31,7 @@ if dest_folder_path not in sys.path:
     sys.path.append(dest_folder_path)
 
 try:
-    from generated_app import Game
+    from generated_app import Game                                      #type:ignore
 except ImportError as e:
     print(f"❌ Import Error: {e}")
     sys.exit(1)
