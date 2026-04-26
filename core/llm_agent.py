@@ -172,10 +172,20 @@ def generate_py(user_prompt: str):
         "\n\n### 3. TECHNICAL ARCHITECTURE"
         "\n- **RAG Integration**: Explicitly state which modules (ObjectPool, SpatialGrid) handle which logic."
         "\n- **JSON Properties**: Define constants for Speed, HP, and Cooldown using UPPER_SNAKE_CASE."
+        "\n  For every entity in the entities list that acts as an environment or obstacle, you MUST explicitly define a COLLISION_TYPE inside its properties dictionary."
+        "\n- COLLISION_TYPE: solid (Use for ground, walls, blocks. Solid on all 4 sides)."
+        "\n- COLLISION_TYP: \"one_way\" (Use for floating platforms, scaffolds, branches. Player can jump up through it from below)."
+        "\n- Example:"
+        "\n  properties {" 
+        "\n    \"IMAGE_SCALE\": 1.0,"
+        "\n    \"COLLISION_TYPE\": \"one_way\" "
+        "\n}"
 
-        "\n\n### 4. GAMEPLAY LOGIC"
-        "\n- **Win/Loss Conditions**: Define logic (e.g., `enemy_count == 0` for level clear)."
-        "\n- **Hitbox Rule**: Specify hitboxes are 20% smaller than visual assets for 'Juicy' feel."
+        "\n\n### 4. GAMEPLAY LOGIC & PHYSICS DATA"
+        "\n- **Win/Loss Conditions**: Define clear logic (e.g., `enemy_count == 0` for level clear, `player_hp == 0` for game over)."
+        "\n- **Physics Properties (CRITICAL)**: DO NOT write implementation details about hitboxes. Instead, you MUST define the physical role of environment entities in the JSON using `COLLISION_TYPE`."
+        "\n  - Use `'COLLISION_TYPE': 'solid'` for ground/walls."
+        "\n  - Use `'COLLISION_TYPE': 'one_way'` for jump-through platforms."
 
         "\n\n### 5. DYNAMIC IMAGE SCALING (MATHEMATICAL RULE)"
         "\n- **Base Resolution**: Assume ALL generated visual assets are 1024x1024 pixels."
@@ -227,13 +237,16 @@ def generate_py(user_prompt: str):
     with open(doc_path, "w", encoding="utf-8") as f:
         f.write(response_planner.text)
 
-    json_match = re.search(r'```json\n(.*?)\n```', response_planner.text, re.DOTALL)
-    if json_match:
-        json_content = json_match.group(1)
+    json_matches = re.findall(r'```json\n(.*?)\n```', response_planner.text, re.DOTALL)
+    
+    if json_matches:
+        #find the longest one(may have shorter example in document)
+        json_content = max(json_matches, key=len)
+        
         json_path = os.path.join(folder, "game_config.json")
         with open(json_path, "w", encoding="utf-8") as f:
             f.write(json_content)
-        print("✅ Successfully extract and store game_config.json")
+        print("✅ Successfully extracted and stored the longest game_config.json")
     else:
         print("⚠️ Warning! Extract JSON file failed.")
 
@@ -271,15 +284,32 @@ def generate_py(user_prompt: str):
         "\n- **Property Guard**: Use `config.get_prop('Name', 'Key', default_value)` to ensure math operations NEVER hit `None`."
         "\n- **Zero-Argument Init**: `Game.__init__(self)` MUST NOT require arguments."
         "\n- **Pygame Rect Attributes**: NEVER use `rect.center.x` or `rect.center.y`. You MUST use `rect.centerx` or `rect.centery`. Tuples do not have .x or .y attributes in Python."
+        "\n- **No Hardcoded Names**: DO NOT invent entity names (like 'Boss_Dragon'). You MUST only spawn entity names that are explicitly listed in the JSON config!"
         
         "\n\n### 3. ASSET PROCESSING (GREEN SCREEN & SCALE)"
         "\n- **Alpha Transparency**: DO NOT use set_colorkey(). Since assets are pre-processed with rembg, they already have an alpha channel."
         "\n- **Loading Rule**: You MUST use `image = pygame.image.load(path).convert_alpha()` for ALL assets. This ensures perfect transparency without color collision bugs.\n"
+        "\n- **Auto-Crop Transparent Borders**: AI-generated assets often have large transparent padding. Immediately after loading the image, you MUST crop it to its bounding rect:"
+        "\n  ```python"
+        "\n  bounding_rect = image.get_bounding_rect()"
+        "\n  if bounding_rect.width > 0 and bounding_rect.height > 0:"
+        "\n      image = image.subsurface(bounding_rect).copy()"
+        "\n  ```"
         "\n- **Scaling**: Retrieve `IMAGE_SCALE` from JSON. Use `pygame.transform.scale()` inside the `AssetManager` or Entity `__init__`. Do not hardcode scale values.\n"
 
-        "\n\n### 4. JUICY PHYSICS & GAME FEEL"
-        "\n- **Axis Separation**: Move X -> Check X Collision -> Move Y -> Check Y Collision. Use `pygame.math.Vector2` for `self.pos`."
-        "\n- **Hitboxes**: Hitboxes MUST be 20% smaller than visual sprites."
+        "\n\n### 4. JUICY PHYSICS & COLLISION TYPES (CRITICAL)"
+        "\n- **Axis Separation**: Move X -> Check X Collision -> Move Y -> Check Y Collision."
+        "\n- **Collision Classification (CRITICAL)**: You MUST strictly distinguish between solid walls and pass-through scaffolds based on their role:"
+        "\n  - `Ground` or `Wall` Tiles: MUST be solid on all 4 sides. Set `self.is_one_way = False`."
+        "\n  - `Platform` Tiles (Floating Scaffolds): MUST be one-way (player can jump up through them from below and walk past their sides). Set `self.is_one_way = True`."
+        "\n- **Dynamic Hitboxes**: Do NOT shrink the hitbox for static environments (`Platform`, `Ground`). Their `hitbox` MUST exactly equal `self.rect`."
+        "\n- **Entity Hitboxes**: For `Player` or `Enemy`, shrink the hitbox using `self.rect.inflate(-self.rect.width * 0.2, -self.rect.height * 0.2)`."
+        "\n- **Anchor Point**: Align sprites by their bottom edge in your update method:"
+        "\n  ```python"
+        "\n  def update_rect_from_hitbox(self):"
+        "\n      self.rect.centerx = self.hitbox.centerx"
+        "\n      self.rect.midbottom = self.hitbox.midbottom"
+        "\n  ```"
 
         "\n\n### 5. FSM SEQUENCE & MENUS"
         "\n- **Lazy FSM**: `FSM` MUST NOT call `self.change()` inside its `__init__`."
