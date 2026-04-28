@@ -2,7 +2,7 @@
 import json
 import sys
 import chromadb
-from google.genai import types
+from google.genai import types              #type:ignore
 
 # Import updated config
 import sys

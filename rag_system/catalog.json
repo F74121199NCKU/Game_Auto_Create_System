@@ -1,5 +1,16 @@
 [
   {
+    "filename": "Astar.py",
+    "tags": [
+      "algorithm",
+      "pathfinding",
+      "a-star",
+      "smart-enemy",
+      "grid"
+    ],
+    "description": "Use this module for Elite Enemies or Bosses that need to intelligently navigate around walls to reach the player. This A* search is optimized for 2D Grids using heapq and supports terrain weights."
+  },
+  {
     "filename": "camera_box.py",
     "tags": [
       "camera",
@@ -18,7 +29,7 @@
       "player-center",
       "y-sort"
     ],
-    "description": "Scrolling camera that follows the player with built-in Y-Sort depth sorting. Suitable for RPGs, adventure games, and other large-map games."
+    "description": "Scrolling camera that follows the player with built-in Y-Sort depth sorting. Suitable for RPGs, adventure games, and large map exploration."
   },
   {
     "filename": "collision.py",
@@ -29,7 +40,20 @@
       "interaction",
       "damage"
     ],
-    "description": "General Collision Manager (Static Utility Class). Encapsulates Pygame's spritecollide and groupcollide to provide a more semantic interface. Supports 'Single vs Group' and 'Group vs Group' collision detection and Callback processing."
+    "description": "General Collision Manager (Static Utility Class). Encapsulates Pygame's spritecollide and groupcollide with a more semantic interface. Supports \"Single vs Group\" and \"Group vs Group\" detection with Callback handling."
+  },
+  {
+    "filename": "dijkstra.py",
+    "tags": [
+      "algorithm",
+      "pathfinding",
+      "dijkstra",
+      "flow-field",
+      "swarm-ai",
+      "grid",
+      "weighted-terrain"
+    ],
+    "description": "【RAG Context for Architect & Planner】 Use this module when generating \"Swarm AI\" or \"Pathfinding\" for multiple enemies. 1. The grid stores \"Movement Costs\" (e.g., 1 for grass, 5 for swamp). 2. Walls MUST be represented as float('inf') in the grid array. 3. Enemies will naturally flow around high-cost areas and walls to reach the player efficiently."
   },
   {
     "filename": "mouse_camera.py",
@@ -40,7 +64,7 @@
       "edge-panning",
       "y-sort"
     ],
-    "description": "Mouse-controlled camera (RTS Style / Edge Panning). Features: 1. Automatic scrolling when the mouse cursor moves to the window edge. 2. Implements a 'Mouse Lock/Bounce' mechanic for an infinite scrolling feel. 3. Built-in Y-Sort (depth sorting) rendering. Applicable genres: RTS (Real-Time Strategy), Simulation, and Tower Defense games."
+    "description": "Mouse-controlled camera (RTS Style / Edge Panning). Features: 1. Automatic scrolling when the mouse cursor hits the window edge. 2. Implements a \"Mouse Lock/Bounce\" mechanic for an infinite scrolling feel. 3. Built-in Y-Sort (depth sorting) rendering. Applicable genres: RTS, Simulation, Tower Defense."
   },
   {
     "filename": "object_pool.py",
@@ -49,7 +73,7 @@
       "memory",
       "pool"
     ],
-    "description": "Simple Object Pool used to reuse bullets or enemies, avoiding frequent memory allocation."
+    "description": "Simple Object Pool used to reuse bullets or enemies, avoiding frequent memory allocation"
   },
   {
     "filename": "sprite_manager.py",
@@ -58,7 +82,7 @@
       "rendering",
       "group"
     ],
-    "description": "Base class for all game objects, inheriting from Pygame's Sprite class."
+    "description": "Base class for all game objects, inheriting from Pygame's Sprite"
   },
   {
     "filename": "tile_map.py",
