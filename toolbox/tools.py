@@ -1,5 +1,6 @@
 import os
 import re
+import ast
 import time
 import random
 from google import genai
@@ -20,11 +21,23 @@ def code_to_py(code, filename = "generated_app.py", folder = "dest"):
     return file_path 
 
 # Clean redundant Markdown formatting from LLM response
+import re
+
 def clean_code(raw_text: str) -> str:
     """
-    Removes Markdown code block syntax (e.g., ```python ... ```) 
-    to extract the raw Python code.
+    Robustly extracts Python code from Markdown blocks within the LLM response.
+    Ignores any conversational text or pseudo-XML thinking process.
     """
+    # 1. Forcefully remove any <THINKING>...</THINKING> blocks (case-insensitive, multiline)
+    raw_text = re.sub(r'<(?i:THINKING)>.*?</(?i:THINKING)>', '', raw_text, flags=re.DOTALL)
+    
+    # 2. Use Regex to extract everything between ```python and ```
+    match = re.search(r'```python\s*(.*?)\s*```', raw_text, re.DOTALL)
+    
+    if match:
+        return match.group(1).strip()
+    
+    # 3. Fallback cleanup
     clean_text = re.sub(r'^```python\s*', '', raw_text)   
     clean_text = re.sub(r'^```\s*', '', clean_text)       
     clean_text = re.sub(r'```$', '', clean_text)          
@@ -81,3 +94,60 @@ def safe_generate_content(model_id, contents, config=None):
                 raise e
                 
     raise Exception("❌ Max retries exceeded. Google server is still unavailable.")
+
+def abstract_program(source_code: str) -> str:
+    """
+    Parses Python code and generates a structural skeleton.
+    Enhanced to deeply extract instance attributes declared inside __init__.
+    """
+    try:
+        tree = ast.parse(source_code)
+        
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                docstring = ast.get_docstring(node)
+                extracted_attributes = []
+                
+                # Dig deeper into __init__ to find dynamically declared attributes
+                if node.name == "__init__":
+                    for child in ast.walk(node):
+                        if isinstance(child, ast.Assign):
+                            for target in child.targets:
+                                # Check if the pattern matches `self.something = ...`
+                                if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name):
+                                    if target.value.id == "self":
+                                        extracted_attributes.append(target.attr)
+                
+                # Clear the function body for skeletonization
+                node.body = []
+                
+                # Restore the docstring if it exists
+                if docstring:
+                    node.body.append(ast.Expr(value=ast.Constant(value=docstring)))
+                    
+                # Inject the discovered attributes back into the skeleton as visual hints
+                if extracted_attributes:
+                    # Remove duplicates while maintaining order
+                    unique_attrs = list(dict.fromkeys(extracted_attributes))
+                    for attr in unique_attrs:
+                        # Create a mock string hint so LLM knows this attribute exists
+                        hint_str = f"self.{attr} = [Extracted by AST]"
+                        mock_assignment = ast.Expr(value=ast.Constant(value=hint_str))
+                        node.body.append(mock_assignment)
+                        
+                # Ensure the function isn't entirely empty to prevent SyntaxError
+                if not node.body:
+                    node.body.append(ast.Pass())
+                    
+            elif isinstance(node, ast.ClassDef):
+                if not node.body:
+                    node.body.append(ast.Pass())
+
+        return ast.unparse(tree)
+        
+    except SyntaxError as e:
+        print(f"[ERROR] AST Parser Syntax Error: {e}")
+        return f"# [Syntax Error in extracting skeleton]\n{source_code}"
+    except Exception as e:
+        print(f"[ERROR] AST Parser Unexpected Error: {e}")
+        return source_code

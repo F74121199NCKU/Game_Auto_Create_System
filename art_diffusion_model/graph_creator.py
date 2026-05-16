@@ -1,7 +1,8 @@
 import os
 import gc
-from rembg import remove                                                            #type:ignore
+import random
 import torch                                                                        #type:ignore
+from rembg import remove                                                            #type:ignore
 from diffusers import StableDiffusionXLPipeline, EulerAncestralDiscreteScheduler    #type:ignore
 
 # 1. Configuration & Path Setup
@@ -39,14 +40,22 @@ except Exception as e:
 def generate_game_asset(item_name: str, agent_prompt: str, agent_negative_prompt: str, output_path: str) -> str:
     """
     Generates a single high-quality game asset at 1024x1024.
+    Applies strict spatial constraints to prevent cropped or broken images.
     """
-    final_prompt = f"rpg_pixel_style, {agent_prompt}"
-    final_negative_prompt = agent_negative_prompt
-
-    print(f"🎨 Generating asset: [{item_name}] at 1024x1024...")
+    # Step 2: Add spatial anchoring to the positive prompt
+    framing_positive = "full body, entirely in frame, perfectly centered, isolated on a pure white background"
+    final_prompt = f"rpg_pixel_style, {framing_positive}, {agent_prompt}"
     
-    # Use fixed seed for consistency during development
-    generator = torch.Generator("cuda").manual_seed(42)
+    # Step 3: Add explicit cropping prevention to the negative prompt
+    framing_negative = "cropped, out of frame, cut off, partial, close up, touching the edge, borders"
+    final_negative_prompt = f"{framing_negative}, {agent_negative_prompt}"
+
+    print(f"[SYSTEM] Generating asset: [{item_name}] at 1024x1024...")
+    
+    # Step 1: Use a dynamic seed to avoid getting stuck in a bad latent space, and initialize the generator
+    current_seed = random.randint(0, 2147483647)
+    generator = torch.Generator("cuda").manual_seed(current_seed)
+    print(f"[SYSTEM] Using dynamic seed: {current_seed}")
     
     try:
         image = pipe(
@@ -56,21 +65,22 @@ def generate_game_asset(item_name: str, agent_prompt: str, agent_negative_prompt
             height=1024, 
             num_inference_steps=30, 
             guidance_scale=7.5,
+            generator=generator,  # FIX: Explicitly pass the generator to the pipeline
             cross_attention_kwargs={"scale": 0.75} 
         ).images[0]
 
         if item_name.startswith("[sprite]"):
-            image = remove(image, alpha_matting=False, post_process_mask=True)
+            # Step 4: Enable alpha matting to prevent aggressive foreground destruction during background removal
+            image = remove(image, alpha_matting=True, alpha_matting_erode_size=5, post_process_mask=True)
 
         image.save(output_path)
-        print(f"✨ Successfully saved to: {output_path}")
+        print(f"[SUCCESS] Asset successfully saved to: {output_path}")
         return output_path
 
     except Exception as e:
-        error_msg = f"❌ Generation failed for {item_name}: {str(e)}"
+        error_msg = f"[ERROR] Generation failed for {item_name}. Reason: {str(e)}"
         print(error_msg)
         return ""
-
 def generate_game_assets(asset_list: list, dest_folder: str = "dest/assets"):
     """
     Processes a list of asset requests and generates images sequentially.

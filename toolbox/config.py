@@ -10,111 +10,197 @@ client = genai.Client(api_key=API_KEY)
 
 
 # Global 
-EMBEDDING_MODEL     = "models/gemini-embedding-001" 
+MODEL_SMART         = 'gemini-2.5-pro'
 MODEL_NORMAL        = 'gemini-2.5-flash'
-MODEL_SMART         = 'gemini-3.1-pro-preview'
+EMBEDDING_MODEL     = "models/gemini-embedding-001" 
 CHAOS_PAYLOAD = """
-# --- [INJECTED SAFE FUZZER CODE] START ---
-import sys as _sys
-import os as _os
-import random as _random
-import pygame as _pygame
+# ==========================================
+# [CHAOS PAYLOAD INJECTED: SYNCHRONOUS FUZZ TESTER ACTIVE]
+# ==========================================
+import pygame
+import random
+import sys
+import time
+import os
 
 # Force output encoding to UTF-8
 try:
-    _sys.stdout.reconfigure(encoding='utf-8')
+    sys.stdout.reconfigure(encoding='utf-8')
 except:
     pass
 
-class _ChaosAgent:
-    def __init__(self, duration_sec=10.0):
-        self.start_t = _pygame.time.get_ticks()
-        self.duration = duration_sec * 1000
-        self.end_t = self.start_t + self.duration
-        
+print("[FUZZER] Synchronous Safe Mode Test Initialized.", flush=True)
+
+TEST_KEYS = [pygame.K_w, pygame.K_a, pygame.K_s, pygame.K_d, 
+             pygame.K_SPACE, pygame.K_RETURN, pygame.K_ESCAPE, 
+             pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT]
+
+_original_event_get = pygame.event.get
+
+_FUZZ_START_TIME = time.time()
+_FUZZ_DURATION_SEC = 12.0
+# Step 1: Define the non-blocking delay period
+_CHAOS_DELAY_SEC = 2.0  
+
+def _chaotic_event_get(*args, **kwargs):
+    current_time = time.time()
+    
+    # Step 2: Adjust total time to include the initial delay
+    if current_time - _FUZZ_START_TIME > (_FUZZ_DURATION_SEC + _CHAOS_DELAY_SEC):
+        print("[FUZZ] SUCCESS: Test Passed cleanly.", flush=True)
         try:
-            self.surface = _pygame.display.get_surface()
-            if self.surface:
-                self.w, self.h = self.surface.get_size()
-            else:
-                self.w, self.h = 800, 600
+            pygame.quit()
         except:
-            self.w, self.h = 800, 600
+            pass
+        os._exit(0)
 
-        # 加入 flush=True 確保字串立刻送出
-        print(f"[FUZZER] Start Safe Mode Test ({duration_sec}s)", flush=True)
-
-    def _post_key(self, key):
-        try:
-            _pygame.event.post(_pygame.event.Event(_pygame.KEYDOWN, key=key))
-            _pygame.event.post(_pygame.event.Event(_pygame.KEYUP, key=key))
-        except: pass
-
-    def _post_click(self, x, y):
-        try:
-            x = max(0, min(x, self.w - 1))
-            y = max(0, min(y, self.h - 1))
-            _pygame.event.post(_pygame.event.Event(_pygame.MOUSEBUTTONDOWN, button=1, pos=(x, y)))
-            _pygame.event.post(_pygame.event.Event(_pygame.MOUSEBUTTONUP, button=1, pos=(x, y)))
-            # 移除 _pygame.mouse.set_pos((x, y)) 以避免底層 Thread Crash
-        except: pass
-
-    def update(self):
-        current_t = _pygame.time.get_ticks()
+    # Always fetch the real events first
+    events = _original_event_get(*args, **kwargs)
+    
+    # Step 3: Non-blocking delay check. 
+    # If we are still in the delay period, just return normal events without injecting chaos.
+    if current_time - _FUZZ_START_TIME < _CHAOS_DELAY_SEC:
+        return events
+    
+    # --- CHAOS INJECTION START ---
+    # Randomly keyboard button test
+    if random.random() < 0.2:
+        random_key = random.choice(TEST_KEYS)
+        events.append(pygame.event.Event(pygame.KEYDOWN, {'key': random_key, 'unicode': '', 'mod': 0, 'scancode': 0}))
+        events.append(pygame.event.Event(pygame.KEYUP, {'key': random_key})) 
         
-        # --- [Fix Point] Forcibly exit when time is up ---
-        if current_t > self.end_t:
-            # 【關鍵修復】加入 flush=True 確保這句話一定會被 fuzz_tester 擷取到
-            print("[FUZZ] SUCCESS: Test Passed cleanly.", flush=True)
-            try:
-                _pygame.quit()
-            except:
-                pass
-            _os._exit(0) # 暴力退出前，字串已經安全送出了
-            
-        if _random.random() < 0.2:
-            action_type = _random.choice(['move', 'click', 'skill'])
-            if action_type == 'move':
-                keys = [_pygame.K_LEFT, _pygame.K_RIGHT, _pygame.K_UP, _pygame.K_DOWN, 
-                        _pygame.K_w, _pygame.K_a, _pygame.K_s, _pygame.K_d]
-                self._post_key(_random.choice(keys))
-            elif action_type == 'click':
-                rand_x = _random.randint(0, self.w)
-                safe_h_max = int(self.h * 0.85) 
-                rand_y = _random.randint(0, safe_h_max)
-                self._post_click(rand_x, rand_y)
-            elif action_type == 'skill':
-                self._post_key(_random.choice([_pygame.K_SPACE, _pygame.K_r, _pygame.K_e]))
-
-if not hasattr(_sys, '_fuzzer_active'):
-    _sys._fuzzer_active = True
-    global _tester
-    _tester = _ChaosAgent(duration_sec=10.0)
-
-def _fuzzer_loop():
-    while True:
+    # Randomly mouse button test
+    if random.random() < 0.1:
         try:
-            _tester.update()
-            _pygame.time.wait(30)
-        except SystemExit:
-            break
-        except Exception as e:
-            import traceback
-            print(f"[FUZZ] CRASH DETECTED: {e}", flush=True)
-            traceback.print_exc()
-            _os._exit(1)  # Force exit with error code so Executor catches it
+            surface = pygame.display.get_surface()
+            w, h = surface.get_size() if surface else (800, 600)
+            rand_x = random.randint(0, w)
+            rand_y = random.randint(0, int(h * 0.85)) 
+            
+            events.append(pygame.event.Event(pygame.MOUSEBUTTONDOWN, {'pos': (rand_x, rand_y), 'button': 1, 'touch': False}))
+            events.append(pygame.event.Event(pygame.MOUSEBUTTONUP, {'pos': (rand_x, rand_y), 'button': 1, 'touch': False}))
+        except:
+            pass
 
-import threading
-_t = threading.Thread(target=_fuzzer_loop, daemon=True)
-_t.start()
-# --- [INJECTED SAFE FUZZER CODE] END ---
+    return events
+
+# Override the original pygame function
+pygame.event.get = _chaotic_event_get
+# ==========================================
+"""
+
+GLOBAL_JSON_TEMPLATE = """
+{
+  "game_metadata": {
+    "title": "String (Name of the game)",
+    "genre": "String",
+    "fps": "int",
+    "screen_size": ["int", "int"]
+  },
+ 
+  "config_data": {
+    "description": "Global variables and tuning parameters (e.g., PLAYER_SPEED, ASSET_PATHS)",
+    "parameters": {
+      "parameter_name": "Value (Can be int, float, string, or list)"
+    }
+  },
+
+  "core_systems": [
+    {
+      "class_name": "String (e.g., ObjectPool, SpatialGrid, AStarPathfinder)",
+      "parent_class": "String (or null)",
+      "is_singleton": "boolean",
+      "description": "String (Low-level architectural or algorithmic systems)",
+      "attributes": {
+        "attr_name": "Type (e.g., 'dict', 'list', 'int')"
+      },
+      "methods": [
+        {
+          "name": "String",
+          "params": ["self", "param_name: type"],
+          "return_type": "String"
+        }
+      ]
+    }
+  ],
+
+  "managers": [
+    
+
+      "class_name": "String (e.g., CollisionManager, DungeonManager, UIManager)",
+      "parent_class": "String (or null)",
+      "is_singleton": "boolean",
+      "description": "String (Controllers that manage interactions between systems and entities)",
+      "attributes": {
+        "attr_name": "Type"
+      },
+      "methods": [
+        {
+          "name": "String",
+          "params": ["self", "param_name: type"],
+          "return_type": "String"
+        }
+      ]
+    }
+  ],
+
+  "game_states": [
+    {
+      "class_name": "String (e.g., MainMenuState, PlayingState, GameOverState)",
+      "parent_class": "String (e.g., State)",
+      "description": "String (FSM states that control what is updated and drawn)",
+      "attributes": {
+        "attr_name": "Type"
+      },
+      "methods": [
+        {
+          "name": "enter",
+          "params": ["self"],
+          "return_type": "None"
+        },
+        {
+          "name": "update",
+          "params": ["self", "dt: float", "events: list"],
+          "return_type": "None"
+        },
+        {
+          "name": "draw",
+          "params": ["self", "surface: pygame.Surface"],
+          "return_type": "None"
+        }
+      ]
+    }
+  ],
+
+  "entities": [
+    {
+      "class_name": "String (e.g., Player, BossProjectile, Wall, Button, HUD)",
+      "parent_class": "String (e.g., GameSprite, pygame.sprite.Sprite)",
+      "description": "String (Tangible objects or UI elements rendered on screen)",
+      "attributes": {
+        "attr_name": "Type"
+      },
+      "methods": [
+        {
+          "name": "__init__",
+          "params": ["self", "*args", "**kwargs"],
+          "return_type": "None"
+        },
+        {
+          "name": "String",
+          "params": ["self", "param_name: type"],
+          "return_type": "String"
+        }
+      ]
+    }
+  ]
+}
 """
 
 # Safety Standards
 safety_settings = [
-    types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
-    types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
-    types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
-    types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
+    types.SafetySetting(category = "HARM_CATEGORY_HARASSMENT", threshold = "BLOCK_NONE"),
+    types.SafetySetting(category = "HARM_CATEGORY_HATE_SPEECH", threshold = "BLOCK_NONE"),
+    types.SafetySetting(category = "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold = "BLOCK_NONE"),
+    types.SafetySetting(category = "HARM_CATEGORY_DANGEROUS_CONTENT", threshold = "BLOCK_NONE"),
 ]
-
