@@ -14,3 +14,7 @@ assets/
 Base_models/
 models/
 delete_pic.py
+check_env.py
+test_pipeline.py
+final_test.py
+Batch_Test_Results

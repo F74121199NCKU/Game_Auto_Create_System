@@ -42,7 +42,7 @@ def multi_agent_code_review(initial_code: str, design_doc: str, max_turns: int =
             "\n5. **Null Safety**: Check for math operations on potentially `None` config values. Ensure `get_prop` has numeric defaults."
             "\n6. **Spawning**: Confirm `camera.center_on_target()` is called immediately after level generation."
             "\n7. Method Consistency: Ensure that every method called in the FSM state lambdas (like ui_manager.handle_event) is actually DEFINED in the corresponding class. Check for missing delegation logic in managers."
-            "\n8. JSON Target: Verify the code explicitly attempts to load game_config.json. Flag param.json as a bug."
+            "\n8. **JSON Target & Path Safety**: Verify the code explicitly attempts to load `game_config.json`. Furthermore, you MUST ensure it uses `os.path.dirname(__file__)` to resolve the absolute path of the JSON file. If the code uses a raw relative string like `open('game_config.json')`, REJECT it immediately and flag it as a path safety bug"
             "\n9. Scale Implementation: Ensure pygame.transform.scale is actively used on get_image outputs based on JSON configuration. 1024px default loading without scaling is a CRITICAL BUG."
             "\n10. NoneType Defense: Check all dynamic dictionary assignments (e.g., data = lookup()). If they lack an or {} fallback before .get() is called, flag it as an AttributeError risk."
             "\n11. Spacing/Tag Bug: Check if string keys in AssetManager exactly match available_assets_str without injecting stray spaces."
@@ -84,13 +84,15 @@ def multi_agent_code_review(initial_code: str, design_doc: str, max_turns: int =
             "\n1. **Inheritance**: Always use `def __init__(self, ..., pool=None, **kwargs):` and pass them to super."
             "\n2. **Safe Retrieval**: Use the pattern `config.get_prop('Entity', 'Key', default_value)` to prevent NoneType math errors."
             "\n3. **Safe Iteration**: Use `groups = kwargs.get('groups') or []` for any sprite group handling."
-            "\n4. **Asset Reliability**: Use `os.path.join(os.path.dirname(__file__), 'assets', filename)` for absolute path safety."
+            "\n4. **Asset Reliability**: You Use `os.path.join(os.path.dirname(__file__), 'assets', filename)` for absolute path safety."
             "\n5. **State Machine**: Ensure all `fsm.add()` calls occur in `Game.__init__` before any gameplay logic starts."
             "\n6. AttributeError (Missing Methods): If a class lacks a method called by the FSM or another manager, identify the missing 'Delegation' logic (e.g., UIManager needs to pass events to Buttons)."
-            "\n7. Error Fixes: If feedback mentions FileNotFoundError, rename the target file to game_config.json. If feedback mentions AttributeError or NoneType, immediately add or {} to the failing dictionary retrieval."
+            "\n7. **Error Fixes**: If the Reviewer feedback mentions FileNotFoundError or JSON path safety issues, you MUST immediately refactor the dictionary/JSON loading logic to use `os.path.join(os.path.dirname(__file__), 'game_config.json')`."
             "\n8. Scaling Fixes: Apply pygame.transform.scale using IMAGE_SCALE from config if the Reviewer flags oversized images."
             "\n9. Transparency Fixes: Remove any `set_colorkey` calls and chain `.convert_alpha()` right after `pygame.image.load()`."
             "\n10. Font Fixes: If buttons lack text, add `self.font = pygame.font.Font(None, 36)` and blit `self.font.render(text, True, (255,255,255))` in the draw method."
+            "\n 11. Generator Defense: NEVER pass itertools.chain or any Generator directly into physical update methods. You MUST wrap them in list() (e.g., list(itertools.chain(...))) to prevent iterator exhaustion during separated X/Y axis collision checks."
+            "\n 12. Constructor Safety: NEVER call self.reset() inside an __init__ method. Rely strictly on super().__init__ to initialize variables. Save reset() exclusively for ObjectPool recycling logic to prevent method overriding TypeErrors."
 
             "\n\n【Constraints】"
             "\n- DO NOT remove `self.game_active` or RAG module imports."
@@ -238,21 +240,28 @@ def generate_py(user_prompt: str):
         f.write(response_planner.text)
 
     json_matches = re.findall(r'```json\n(.*?)\n```', response_planner.text, re.DOTALL)
-    
+    valid_json_contents = []
     if json_matches:
-        #find the longest one(may have shorter example in document)
-        json_content = max(json_matches, key=len)
-        
+        for match in json_matches:
+            try:
+                # Try parsing to ensure this string is a complete and valid JSON string.
+                parsed_test = json.loads(match.strip())
+                valid_json_contents.append(match.strip())
+            except json.JSONDecodeError:
+                continue
+
+    if valid_json_contents:
+        json_content = max(valid_json_contents, key=len)
         json_path = os.path.join(folder, "game_config.json")
         with open(json_path, "w", encoding="utf-8") as f:
             f.write(json_content)
-        print("✅ Successfully extracted and stored the longest game_config.json")
+        print(f"✅ The longest valid game_config.json file has been successfully extracted and stored.")
     else:
-        print("⚠️ Warning! Extract JSON file failed.")
+        print("⚠️ Warning! No valid JSON blocks were found, which may trigger a subsequent rendering rollback to prevent crashes.")
 
     # 3. Art Director & Asset Generator
     print("🎨 [System] Passing design document to Art Director Agent...")
-    asset_requests = art_director_plan_assets(response_planner.text)
+    asset_requests = art_director_plan_assets(json_content)
     
     available_assets_str = "[]"
     if asset_requests:
@@ -276,6 +285,7 @@ def generate_py(user_prompt: str):
         "You MUST follow this order in `Game.__init__` to prevent 'Purple Screen' and 'NoneType' errors:"
         "\n1. `pygame.init()`."
         "\n2. **Data First**: Call a private method `self._read_json_only()` (which YOU must define) to load 'game_config.json' with `encoding='utf-8'` into `GameConfig`."
+        "[STRICT PATH RULE]: Inside `_read_json_only()`, you MUST resolve the absolute path using `os.path.join(os.path.dirname(__file__), 'game_config.json')` before calling `open()`. NEVER use raw relative paths like `open('game_config.json')`, as it breaks when executed from different working directories."
         "\n3. **Display Second**: Call `pygame.display.set_mode()` using values from the loaded config."
         "\n4. **Assets Third**: Call `asset_manager.load_assets(data)`. This ensures `.convert_alpha()` works correctly."
 
@@ -290,6 +300,7 @@ def generate_py(user_prompt: str):
         "\n- **Alpha Transparency**: DO NOT use set_colorkey(). Since assets are pre-processed with rembg, they already have an alpha channel."
         "\n- **Loading Rule**: You MUST use `image = pygame.image.load(path).convert_alpha()` for ALL assets. This ensures perfect transparency without color collision bugs.\n"
         "\n- **Auto-Crop Transparent Borders**: AI-generated assets often have large transparent padding. Immediately after loading the image, you MUST crop it to its bounding rect:"
+        "\n **Background Hitbox Rule**: If an image's filename starts with [background], DO NOT use its full image height for gameplay positioning (like ground Y coordinates). Use fixed logical offsets for floors (e.g., screen_height - 100) to prevent the background from physically engulfing the screen."
         "\n  ```python"
         "\n  bounding_rect = image.get_bounding_rect()"
         "\n  if bounding_rect.width > 0 and bounding_rect.height > 0:"
@@ -305,6 +316,7 @@ def generate_py(user_prompt: str):
         "\n- **Dynamic Hitboxes**: Do NOT shrink the hitbox for static environments (`Platform`, `Ground`). Their `hitbox` MUST exactly equal `self.rect`."
         "\n- **Entity Hitboxes**: For `Player` or `Enemy`, shrink the hitbox using `self.rect.inflate(-self.rect.width * 0.2, -self.rect.height * 0.2)`."
         "\n- **Anchor Point**: Align sprites by their bottom edge in your update method:"
+        "\n **Layering Rule (Z-Index)**: All background entities (like Ground, Floor, Starfield) MUST be assigned a z_index = 0. All gameplay entities (Player, Enemies, Walls) default to z_index = 1. In your Camera or draw method, you MUST sort by z_index first, THEN by rect.bottom (e.g., sorted(sprites, key=lambda s: (getattr(s, 'z_index', 1), s.rect.bottom)))."
         "\n  ```python"
         "\n  def update_rect_from_hitbox(self):"
         "\n      self.rect.centerx = self.hitbox.centerx"
@@ -381,43 +393,39 @@ def generate_py(user_prompt: str):
     filepath = code_to_py(code_content)
     return filepath, code_content
 
-def art_director_plan_assets(design_doc: str) -> list:
-    print("👩‍🎨 [Art Director] Analyzing design document for required visual assets...")
+def art_director_plan_assets(json_schema: str) -> list:
+    print("👩‍🎨 [Art Director] Parsing JSON schema for precise asset 1:1 mapping...")
     
     art_prompt = (
-        "You are a Game Art Director. Plan a JSON array for SDXL assets."
-        "【Prompt Rule】: Use COMMA-SEPARATED TAGS for 'pos_prompt'. Focus on visual keywords only."
-        "Example: 'knight, 16-bit pixel art, silver armor, blue runes, glowing, pure white background, flat lighting'."
-        "【Constraints】: No full sentences. Max 30 words per prompt. Ensure 'size' is [1024, 1024]."
+        "You are a Strict Game Art Director and Asset Pipeline Automator.\n"
+        "Your ONLY job is to read the provided `game_config.json` schema and generate an image asset request for EACH entity listed.\n"
         
-        "\n\nCRITICAL TAXONOMY: You MUST prefix every filename EXACTLY with either [background] or [sprite]. \n"
-        "- Use [background] ONLY for static map tiles, floors, and walls. DO NOT add any solid color background tags to them.\n"
-        "- Use [sprite] for EVERYTHING else (including Characters, Enemies, Projectiles, UI Panels, Buttons, and Items) because they require background removal.\n"
-        
-        "CRITICAL CHROMA KEY RULE: For EVERY [sprite] asset, you MUST append 'isolated on a pure white background' to its 'pos_prompt'. rembg will handle the transparency conversion.\n"
-        "CRITICAL FORMATTING: There MUST NOT be any leading or trailing spaces in the prefix or the filename (e.g., [sprite]button.png, NOT [sprite] button.png ).\n"
-        
-        "\n\nCRITICAL UI RULE: For any asset that is a button, panel, or menu (e.g., filenames containing 'button' or 'ui'), you MUST generate BLANK frames ready for text overlay.\n"
-        "- Add 'blank frame, empty container, no text, no icons, centered UI element' to the 'pos_prompt'.\n"
-        "- You MUST ADD 'text, letters, words, alphabet, signature, watermark, typography' to the 'neg_prompt' to strictly prevent the AI from generating gibberish text.\n"
+        "\n【STRICT MAPPING RULES】(CRITICAL)"
+        "\n1. **1:1 Alignment**: Look at the 'entities' list in the JSON. For EVERY single entity (including Characters, Enemies, Obstacles, and ALL UI Buttons like UI_Button_GameStart), you MUST generate exactly ONE object in your output array."
+        "\n2. **Filename Contract**: The 'filename' key in your output MUST match the 'image' field of that entity in the JSON EXACTLY (e.g., if JSON says '[sprite]button_game_start.png', your filename MUST be '[sprite]button_game_start.png'). Do NOT invent creative names like 'play_button.png' or 'knight.png'."
+        "\n3. **No Omissions**: Do NOT skip the UI buttons. Even if they are blank frames, create an asset request for them."
 
-        "\n\n【Asset Classification Rules】:\n"
-        "1. [background]: Static tiles/floors. PROMPT: '16-bit pixel art texture, top-down, seamless, full frame, no borders'.\n"
-        "2. [sprite]: Characters, UI, Items. PROMPT: MUST include isolated on a pure white background.\n"
-        "【Naming Convention】: Use '[sprite]name.png' or '[background]name.png'. NO spaces between tag and name.\n"
+        "\n\n【ANTI-OVER-CLIPPING CHROMA KEY RULE】"
+        "\nTo prevent the background removal tool (rembg) from erasing parts of the asset, choose a contrasting background color based on the asset's visual description:"
+        "\n- For Dark/Colored items (e.g., Bricks, Walls, Dark Monsters): set 'chroma_key' to 'pure white background'."
+        "\n- For Light/White/Silver items (e.g., White UI Panels, Silver Bullets, Light Effects): set 'chroma_key' to 'pure neon green background'."
+        "\n- For assets containing both green and white: set 'chroma_key' to 'pure magenta background'."
 
-        "\n\n【REQUIRED JSON SCHEMA】\n"
-        "You MUST output a valid JSON array. Each object MUST contain EXACTLY these keys: 'filename', 'pos_prompt', 'neg_prompt', 'size'.\n"
-        "Example:\n"
-        "[\n"
-        "  {\n"
-        "    \"filename\": \"[sprite]player_ship.png\",\n"
-        "    \"pos_prompt\": \"pixel art spaceship, silver, isolated on a pure white background, flat lighting, no shadows on floor\",\n"
-        "    \"neg_prompt\": \"blurry, low quality, 3d render\",\n"
-        "    \"size\": [1024, 1024]\n"
-        "  }\n"
-        "]\n"
-        f"\n\n【Game Design Document】\n{design_doc}"
+        "\n\n【REQUIRED OUTPUT SCHEMA】"
+        "\nOutput a valid JSON array only. Each object MUST contain: 'filename', 'pos_prompt', 'neg_prompt', 'size', 'chroma_key'."
+        "\nExample:"
+        "\n["
+        "\n  {"
+        "\n    \"filename\": \"[sprite]button_game_start.png\","
+        "\n    \"pos_prompt\": \"blank sci-fi style futuristic game menu button frame, no text, empty container, isolated on a pure neon green background\","
+        "\n    \"neg_prompt\": \"text, letters, words, alphabet, signature, watermark, typography\","
+        "\n    \"chroma_key\": \"green\","
+        "\n    \"size\": [1024, 1024]"
+        "\n  }"
+        "\n]"
+        
+        # ✨【核心修正】: 真正把傳進來的 json_schema 帶入提示詞的末端，解除 LLM 的資訊孤島！
+        f"\n\n【Target Game Config JSON Schema】\n{json_schema}"
     )
     
     # We use MODEL_FAST because it's good at JSON structuring
@@ -442,7 +450,6 @@ def art_director_plan_assets(design_doc: str) -> list:
             if 'filename' in asset:
                 asset['filename'] = asset['filename'].replace("[sprite] ", "[sprite]").replace("[background] ", "[background]")
             else:
-                # 如果 AI 漏寫了，給一個防呆預設值，或者嘗試抓取 'name'
                 fallback_name = asset.get('name', asset.get('image', 'unknown_asset.png'))
                 asset['filename'] = fallback_name.replace("[sprite] ", "[sprite]").replace("[background] ", "[background]")
                 

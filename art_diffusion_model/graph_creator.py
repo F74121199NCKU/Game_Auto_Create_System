@@ -2,6 +2,7 @@ import os
 import gc
 from rembg import remove                                                            #type:ignore
 import torch                                                                        #type:ignore
+import sys
 from diffusers import StableDiffusionXLPipeline, EulerAncestralDiscreteScheduler    #type:ignore
 
 # 1. Configuration & Path Setup

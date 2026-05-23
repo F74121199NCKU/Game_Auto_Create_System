@@ -34,13 +34,14 @@
   {
     "filename": "collision.py",
     "tags": [
-      "collision",
       "physics",
-      "hitbox",
-      "interaction",
-      "damage"
+      "platformer",
+      "top-down",
+      "collision_resolution",
+      "gravity",
+      "movement"
     ],
-    "description": "General Collision Manager (Static Utility Class). Encapsulates Pygame's spritecollide and groupcollide with a more semantic interface. Supports \"Single vs Group\" and \"Group vs Group\" detection with Callback handling."
+    "description": "2D 運動學與碰撞解析基礎類別。 [RAG 提示] 當遊戲需要「重力」、「平台跳躍」、「撞牆停止」、「滑行」時， 實體必須繼承此類別，並使用 `move_and_collide` 來取代傳統的 `self.rect.x += v`。"
   },
   {
     "filename": "dijkstra.py",
@@ -71,9 +72,11 @@
     "tags": [
       "optimization",
       "memory",
-      "pool"
+      "pool",
+      "factory",
+      "performance"
     ],
-    "description": "Simple Object Pool used to reuse bullets or enemies, avoiding frequent memory allocation"
+    "description": "進階動態物件池管理器。 [RAG 提示] 當使用者需求中包含「射擊」、「大量生成」、「特效」、「效能優化」時，架構師必須呼叫此模組。"
   },
   {
     "filename": "sprite_manager.py",
@@ -85,6 +88,18 @@
     "description": "Base class for all game objects, inheriting from Pygame's Sprite"
   },
   {
+    "filename": "state_machine.py",
+    "tags": [
+      "state_machine",
+      "fsm",
+      "scene_manager",
+      "pause",
+      "menu",
+      "transition"
+    ],
+    "description": "狀態的基礎類別。所有遊戲場景(Menu, Playing, Pause)都應繼承此類別。"
+  },
+  {
     "filename": "tile_map.py",
     "tags": [
       "procedural-generation",
@@ -94,5 +109,17 @@
       "grid-system"
     ],
     "description": "Maze generation and management module. Encapsulates DFS maze generation algorithm and basic grid drawing functions. Features: 1. Uses Iterative DFS to generate a guaranteed connected maze. 2. Provides standardized map drawing methods."
+  },
+  {
+    "filename": "timer.py",
+    "tags": [
+      "time",
+      "timer",
+      "cooldown",
+      "invincibility",
+      "buff",
+      "delay"
+    ],
+    "description": "[RAG 提示] 當實體需要「冷卻時間(Cooldown)」、「持續傷害」、「無敵時間」時， 請實例化此 Timer 類別，並在實體的 update 中呼叫 timer.update(dt)。"
   }
 ]

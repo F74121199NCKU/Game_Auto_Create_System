@@ -1,0 +1,194 @@
+### Technical Specification: Arcade Brick Breaker
+
+#### 1. MANDATORY MENU SYSTEM (STRICT)
+
+*   **Startup Menu:**
+    *   **Buttons:** `「GAME START」`, `「RULES」`, `「QUIT」`
+    *   **Transitions:**
+        *   `「GAME START」` -> `PLAYING` state (start new game).
+        *   `「RULES」` -> `RULES` state.
+        *   `「QUIT」` -> `QUIT_GAME` state (application exit).
+*   **Pause Menu (Trigger: P/ESC key press):**
+    *   **Buttons:** `「CONTINUE」`, `「RESTART」`, `「BACK TO MAIN MENU」`, `「RULES」`
+    *   **Transitions:**
+        *   `「CONTINUE」` -> `PLAYING` state (resume current game).
+        *   `「RESTART」` -> `PLAYING` state (start new game, reset score/lives).
+        *   `「BACK TO MAIN MENU」` -> `STARTUP_MENU` state.
+        *   `「RULES」` -> `RULES` state.
+
+#### 2. ASSET TAXONOMY & MAPPING (CRITICAL)
+
+*   **Classification:**
+    *   `[background]` prefix: Strictly for map/floor/wall tiles (e.g., `[background]game_arena.png`).
+    *   `[sprite]` prefix: For ALL other assets (Entities: Player, Ball, Blocks; UI: Buttons, Score displays; Particles) to allow background removal (e.g., `[sprite]paddle.png`).
+*   **Naming Convention:** Filenames MUST match `[category]name.png` EXACTLY. NO leading/trailing spaces.
+
+#### 3. TECHNICAL ARCHITECTURE
+
+*   **RAG Integration:**
+    *   `collision.py::CollisionManager`: Handles all `Ball` vs `Paddle`, `Ball` vs `Block`, and `Ball` vs `Wall` collision detection. Utilizes `apply_sprite_vs_group`.
+    *   `sprite_manager.py::GameSprite`: Base class for `Paddle`, `Ball`, `Block`, `UIButton`, and `ParticleEffect` entities, providing core rendering and movement capabilities.
+    *   `object_pool.py::ObjectPool`: Manages `Ball` instances (for multi-ball power-ups) and `ParticleEffect` instances to optimize memory allocation and performance.
+    *   `mouse_camera.py`, `tile_map.py`, `camera_player_center.py`, `dijkstra.py`, `Astar.py`, `camera_box.py`: NOT USED. Game uses a fixed-screen camera; no pathfinding or complex map generation.
+*   **JSON Properties (Constants):**
+    *   `PLAYER_SPEED`: Float, defines paddle horizontal movement speed.
+    *   `BALL_INITIAL_SPEED`: Float, defines ball starting velocity magnitude.
+    *   `BLOCK_HP`: Integer, defines hit points for blocks (typically 1 for single-hit destruction).
+    *   `PLAYER_LIVES`: Integer, defines player's starting lives.
+    *   `BALL_SPEED_INCREASE_FACTOR`: Float, multiplier for ball speed after certain collisions.
+*   **COLLISION_TYPE:**
+    *   `"solid"`: Used for `Block` entities and implied for screen boundaries (walls, top, bottom below paddle). No `one_way` collision types are present in Brick Breaker.
+
+#### 4. GAMEPLAY LOGIC & PHYSICS DATA
+
+*   **Win/Loss Conditions:**
+    *   **Win:** `all_blocks_destroyed == True` (no active `Block` entities remaining). Transitions to `LEVEL_COMPLETE` or `GAME_OVER_WIN` state.
+    *   **Loss:** `player_lives == 0`. Transitions to `GAME_OVER_LOSS` state.
+*   **Physics Properties (JSON `COLLISION_TYPE`):**
+    *   `Block` entities MUST have `'COLLISION_TYPE': 'solid'` in their properties.
+    *   Screen boundaries (walls, top, bottom below paddle) are implicitly treated as `'solid'` by the physics system for `Ball` bounce calculations.
+
+#### 5. DYNAMIC IMAGE SCALING (MATHEMATICAL RULE)
+
+*   **Base Resolution:** All generated visual assets are 1024x1024 pixels.
+*   **IMAGE_SCALE Calculation (Target 1280x720 screen):**
+    *   **Player (Paddle):** `IMAGE_SCALE`: ~0.08 (approx. 80px wide).
+    *   **Ball (Projectile):** `IMAGE_SCALE`: ~0.02 (approx. 20px diameter).
+    *   **Blocks:** `IMAGE_SCALE`: ~0.05 (approx. 50px square).
+    *   **UI Buttons (Startup/Pause Menus):** `IMAGE_SCALE`: ~0.15 (approx. 150px wide).
+    *   **Backgrounds (Game Arena):** `IMAGE_SCALE`: ~1.25 (to fill 1280x720 screen width).
+
+#### 6. GAME STATE LOGIC TABLE
+
+| State            | Entry Trigger                               | Exit Trigger(s)                                                                       | Key Bindings                    | Description                                         |
+| :--------------- | :------------------------------------------ | :------------------------------------------------------------------------------------ | :------------------------------ | :-------------------------------------------------- |
+| `STARTUP_MENU`   | Initial launch; `BACK_TO_MAIN_MENU` button | `「GAME START」` button; `「RULES」` button; `「QUIT」` button                          | Mouse Click                     | Displays main menu with game options.               |
+| `PLAYING`        | `「GAME START」` button; `「CONTINUE」` button; `「RESTART」` button | `P` / `ESC` key; `player_lives == 0`; `all_blocks_destroyed == True`                 | Mouse Movement (Paddle), P, ESC | Active gameplay, ball movement, collision detection.|
+| `PAUSED`         | `P` / `ESC` key while in `PLAYING` state    | `「CONTINUE」` button; `「RESTART」` button; `「BACK TO MAIN MENU」` button; `「RULES」` button | Mouse Click, P, ESC             | Game suspended, pause menu displayed.               |
+| `RULES`          | `「RULES」` button (from any menu)          | `BACK` button (implicit UI button); `P` / `ESC` key                                   | Mouse Click, P, ESC             | Displays game rules and instructions.               |
+| `GAME_OVER_LOSS` | `player_lives == 0`                         | `「RESTART」` button; `「BACK TO MAIN MENU」` button                                 | Mouse Click                     | Displays game over message, score, and options.     |
+| `GAME_OVER_WIN`  | `all_blocks_destroyed == True`              | `「NEXT LEVEL」` button; `「BACK TO MAIN MENU」` button                               | Mouse Click                     | Displays level complete message, score, and options.|
+| `QUIT_GAME`      | `「QUIT」` button                           | Application process termination                                                       | Mouse Click                     | Handles application shutdown.                       |
+
+#### 7. ASSET & ENTITY TABLE
+
+| Entity/UI Element | Filename               | Properties (`UPPER_SNAKE_CASE` constants)               | `IMAGE_SCALE` | `COLLISION_TYPE` | Notes                                          |
+| :---------------- | :--------------------- | :------------------------------------------------------ | :------------ | :--------------- | :--------------------------------------------- |
+| Player (Paddle)   | `[sprite]paddle.png`   | `PLAYER_SPEED`: 5.0                                     | 0.08          | N/A              | Mouse X-controlled, no HP.                     |
+| Ball              | `[sprite]ball.png`     | `BALL_INITIAL_SPEED`: 7.0, `BALL_SPEED_INCREASE_FACTOR`: 1.1 | 0.02          | N/A              | Projectile, bounces off solids.              |
+| Block (Type 1)    | `[sprite]block_blue.png`| `BLOCK_HP`: 1                                           | 0.05          | `solid`          | Disappears on hit.                             |
+| Block (Type 2)    | `[sprite]block_red.png` | `BLOCK_HP`: 1                                           | 0.05          | `solid`          | Variant color.                                 |
+| Block (Type 3)    | `[sprite]block_green.png`| `BLOCK_HP`: 1                                           | 0.05          | `solid`          | Variant color.                                 |
+| Background Arena  | `[background]arena.png`| N/A                                                     | 1.25          | N/A              | Static background image.                       |
+| UI Button         | `[sprite]button_base.png`| N/A                                                     | 0.15          | N/A              | Generic button asset for menus.                |
+| UI Panel (Score)  | `[sprite]ui_panel.png` | N/A                                                     | 0.10          | N/A              | For displaying Score, Lives, etc.              |
+| Particle (Block Hit)| `[sprite]particle.png` | N/A                                                     | 0.01          | N/A              | Small visual effect. Managed by `ObjectPool`.  |
+
+#### 8. COLLISION MATRIX
+
+| Initiator       | Target              | Outcome                                                               | RAG Module Used      |
+| :-------------- | :------------------ | :-------------------------------------------------------------------- | :------------------- |
+| `Ball`          | `Paddle`            | `Ball` bounces, velocity adjusted based on hit point, `BALL_SPEED_INCREASE`. | `CollisionManager`   |
+| `Ball`          | `Block`             | `Block` takes damage/destroyed, score incremented, `PARTICLE_EFFECT` spawned, `BLOCK_DESTROY_SFX`. | `CollisionManager`   |
+| `Ball`          | Screen Wall (Left/Right/Top) | `Ball` bounces, velocity reversed on respective axis, `WALL_HIT_SFX`. | `CollisionManager`   |
+| `Ball`          | Screen Floor (Below Paddle) | `player_lives` decremented, `LIFE_LOST_SFX`, `Ball` reset to `Paddle` start position. | `CollisionManager`   |
+| `Paddle`        | Screen Wall (Left/Right) | `Paddle` movement restricted.                                         | N/A (Game Logic)     |
+
+#### 9. ARCHITECTURE
+
+*   **Object Pooling:**
+    *   `object_pool.py::ObjectPool` will be instantiated for `Ball` instances (if multi-ball power-up is implemented) and `ParticleEffect` instances.
+*   **Camera System:**
+    *   Fixed-screen camera, no scrolling. `CameraScrollGroup`, `MouseCameraGroup`, `BoxCameraGroup` are explicitly not utilized.
+*   **Input Management:**
+    *   Pygame event loop directly handles `pygame.MOUSEMOTION` for `Paddle` horizontal control and `pygame.KEYDOWN`/`pygame.KEYUP` for `P`/`ESC` to manage `PAUSED` state.
+*   **UI Implementation:**
+    *   All UI buttons and elements are rendered using `sprite_manager.py::GameSprite` with specific image assets and `IMAGE_SCALE` properties. Click detection is handled via `pygame.mouse.get_pos()` and `pygame.mouse.get_pressed()` interacting with button `rect` attributes.
+
+---
+```json
+{
+  "game_name": "Arcade Brick Breaker",
+  "config": {
+    "FPS": 60,
+    "SCREEN_SIZE": [1280, 720]
+  },
+  "entities": [
+    {
+      "name": "PlayerPaddle",
+      "image": "[sprite]paddle.png",
+      "properties": {
+        "IMAGE_SCALE": 0.08,
+        "PLAYER_SPEED": 5.0
+      }
+    },
+    {
+      "name": "Ball",
+      "image": "[sprite]ball.png",
+      "properties": {
+        "IMAGE_SCALE": 0.02,
+        "BALL_INITIAL_SPEED": 7.0,
+        "BALL_SPEED_INCREASE_FACTOR": 1.1
+      }
+    },
+    {
+      "name": "BlockBlue",
+      "image": "[sprite]block_blue.png",
+      "properties": {
+        "IMAGE_SCALE": 0.05,
+        "BLOCK_HP": 1,
+        "COLLISION_TYPE": "solid"
+      }
+    },
+    {
+      "name": "BlockRed",
+      "image": "[sprite]block_red.png",
+      "properties": {
+        "IMAGE_SCALE": 0.05,
+        "BLOCK_HP": 1,
+        "COLLISION_TYPE": "solid"
+      }
+    },
+    {
+      "name": "BlockGreen",
+      "image": "[sprite]block_green.png",
+      "properties": {
+        "IMAGE_SCALE": 0.05,
+        "BLOCK_HP": 1,
+        "COLLISION_TYPE": "solid"
+      }
+    },
+    {
+      "name": "GameBackground",
+      "image": "[background]arena.png",
+      "properties": {
+        "IMAGE_SCALE": 1.25
+      }
+    },
+    {
+      "name": "UIButton",
+      "image": "[sprite]button_base.png",
+      "properties": {
+        "IMAGE_SCALE": 0.15
+      }
+    },
+    {
+      "name": "UIPanel",
+      "image": "[sprite]ui_panel.png",
+      "properties": {
+        "IMAGE_SCALE": 0.10
+      }
+    },
+    {
+      "name": "ParticleBlockHit",
+      "image": "[sprite]particle.png",
+      "properties": {
+        "IMAGE_SCALE": 0.01
+      }
+    }
+  ],
+  "gameplay_constants": {
+    "PLAYER_LIVES": 3
+  }
+}
+```

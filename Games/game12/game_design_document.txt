@@ -1,0 +1,239 @@
+### TECHNICAL SPECIFICATION: ROGUE SURVIVAL
+
+---
+
+### 1. ARCHITECTURE MAPPING (RAG INTEGRATION)
+
+*   **Game State Management**: Custom module (not in RAG) handles `Menu`, `Playing`, `Pause`, `Rules`, `GameOver`, `Level-Up` states.
+*   **Player & Entity Base Class**: `sprite_manager.GameSprite` serves as the foundation for Player, Enemies, Projectiles, Items.
+*   **Object Pooling**: `object_pool.ObjectPool` is explicitly used for:
+    *   Projectiles (e.g., player bullets, enemy projectiles).
+    *   Experience Gems (collectibles).
+    *   Regular Enemy instances (for wave management and rapid respawn).
+*   **Tilemap Generation & Environment Structure**: `tile_map.MazeManager` is utilized for procedural level layout generation, defining `TILE_WALL` and `TILE_PATH` elements which map to `COLLISION_TYPE: "solid"` for obstacles and navigable areas respectively.
+*   **Player Camera System**: `camera_player_center.CameraScrollGroup` implements the dynamic camera, ensuring the player is smoothly centered on screen with Y-sort rendering.
+*   **Collision Detection**: `collision.CollisionManager` provides static utility methods (`apply_sprite_vs_group`, `apply_group_vs_group`) for all in-game collision logic.
+*   **Monster AI Pathfinding (Swarm)**: `dijkstra.FlowFieldPathfinder` is used for general enemies to efficiently navigate around terrain obstacles and flow towards the player, optimizing for "dozens of monsters".
+*   **Monster AI Pathfinding (Elite/Boss)**: `Astar.AStarPathfinder` is reserved for elite enemies or bosses requiring more precise, calculated paths around obstacles.
+*   **Spatial Grid Optimization**: A conceptual `SpatialGrid` module (not provided in RAG) is critical for:
+    *   Optimizing broad-phase collision detection (e.g., `ProjectileGroup` vs `EnemyGroup`).
+    *   Efficiently querying entities within a specific area (e.g., finding nearby enemies for targeting, collecting experience gems).
+    *   Reducing the number of collision checks from O(N^2) to O(N) or O(N log N) in dense environments.
+
+---
+
+### 2. STATE LOGIC TABLE
+
+| Current State       | Event Trigger                                      | Next State            | Notes                                                      |
+| :------------------ | :------------------------------------------------- | :-------------------- | :--------------------------------------------------------- |
+| **Startup Menu**    | Button: 「GAME START」                           | Playing               | Initializes game world, player, first wave.                |
+|                     | Button: 「RULES」                                | Rules                 | Displays game rules.                                       |
+|                     | Button: 「QUIT」                                 | Exit Game             | Terminates application.                                    |
+| **Playing**         | Key: ESC                                         | Pause                 | Pauses game, displays Pause Menu.                          |
+|                     | `player_hp == 0`                                 | Game Over             | Player defeat, displays Game Over screen.                  |
+|                     | `enemy_count == 0` (and `wave_cleared`)          | Level-Up Screen       | Advances player to upgrade selection.                      |
+| **Pause**           | Button: 「CONTINUE」                             | Playing               | Resumes game.                                              |
+|                     | Button: 「RESTART」                              | Playing               | Resets game state, starts new game.                        |
+|                     | Button: 「BACK TO MAIN MENU」                    | Startup Menu          | Returns to main title screen, clears game state.           |
+|                     | Button: 「RULES」                                | Rules                 | Displays game rules.                                       |
+| **Rules**           | Button: 「BACK」 (implicitly from UI)            | Previous State        | Returns to `Startup Menu` or `Pause` depending on entry.   |
+| **Game Over**       | Button: 「RESTART」                              | Playing               | Resets game state, starts new game.                        |
+|                     | Button: 「BACK TO MAIN MENU」                    | Startup Menu          | Returns to main title screen.                              |
+| **Level-Up Screen** | Button: 「SELECT UPGRADE」 (3 options displayed) | Playing               | Applies chosen upgrade, proceeds to next wave.             |
+
+---
+
+### 3. ASSET & ENTITY TABLE
+
+| Entity/UI Element | Filename (EXACT)                 | `IMAGE_SCALE` | Properties (Upper Snake Case)                                       |
+| :---------------- | :------------------------------- | :------------ | :------------------------------------------------------------------ |
+| Player            | `[sprite]player.png`             | 0.08          | `PLAYER_SPEED`, `PLAYER_HP`, `PLAYER_COOLDOWN`                      |
+| Regular Enemy     | `[sprite]enemy_basic.png`        | 0.08          | `ENEMY_SPEED`, `ENEMY_HP`, `ENEMY_DAMAGE`, `ENEMY_ATTACK_COOLDOWN`  |
+| Elite Enemy       | `[sprite]enemy_elite.png`        | 0.12          | `ELITE_SPEED`, `ELITE_HP`, `ELITE_DAMAGE`, `ELITE_ATTACK_COOLDOWN`  |
+| Player Projectile | `[sprite]projectile_bullet.png`  | 0.02          | `PROJECTILE_SPEED`, `PROJECTILE_DAMAGE`, `PROJECTILE_LIFETIME`      |
+| Experience Gem    | `[sprite]item_xp_gem.png`        | 0.02          | `XP_VALUE`                                                          |
+| Wall Obstacle     | `[background]wall_tile.png`      | 0.08          | `COLLISION_TYPE: "solid"`                                           |
+| Platform          | `[background]platform_one_way.png`| 0.08          | `COLLISION_TYPE: "one_way"`                                         |
+| UI Button (Start) | `[sprite]button_game_start.png`  | 0.15          | -                                                                   |
+| UI Button (Rules) | `[sprite]button_rules.png`       | 0.15          | -                                                                   |
+| UI Button (Quit)  | `[sprite]button_quit.png`        | 0.15          | -                                                                   |
+| UI Button (Cont.) | `[sprite]button_continue.png`    | 0.15          | -                                                                   |
+| UI Button (Restart)| `[sprite]button_restart.png`     | 0.15          | -                                                                   |
+| UI Button (Back)  | `[sprite]button_back_to_main.png`| 0.15          | -                                                                   |
+| Game Background   | `[background]game_map_tile.png`  | 1.25          | -                                                                   |
+
+---
+
+### 4. COLLISION MATRIX
+
+| Initiating Entity     | Target Entity        | Resulting Action(s)                                                                  |
+| :-------------------- | :------------------- | :----------------------------------------------------------------------------------- |
+| **Player**            | Regular Enemy        | Player takes `ENEMY_DAMAGE`. Enemy applies `ENEMY_DAMAGE_COOLDOWN` to player.        |
+|                       | Elite Enemy          | Player takes `ELITE_DAMAGE`. Enemy applies `ELITE_DAMAGE_COOLDOWN` to player.        |
+|                       | Player Projectile    | NO COLLISION.                                                                        |
+|                       | Experience Gem       | Player collects `XP_VALUE`. Gem `kill()`s (returns to ObjectPool).                   |
+|                       | Wall Obstacle (`solid`)| Player movement is stopped.                                                        |
+|                       | Platform (`one_way`) | Player can move horizontally. Player can jump up through, lands on top. Cannot fall through from top. |
+| **Regular Enemy**     | Player Projectile    | Enemy takes `PROJECTILE_DAMAGE`. Projectile `kill()`s (returns to ObjectPool).       |
+|                       | Experience Gem       | NO COLLISION.                                                                        |
+|                       | Wall Obstacle (`solid`)| Enemy movement is stopped/pathfinds around.                                        |
+|                       | Platform (`one_way`) | Enemy moves horizontally on top. Pathfinding avoids moving under/through.            |
+| **Elite Enemy**       | Player Projectile    | Elite Enemy takes `PROJECTILE_DAMAGE`. Projectile `kill()`s (returns to ObjectPool). |
+|                       | Experience Gem       | NO COLLISION.                                                                        |
+|                       | Wall Obstacle (`solid`)| Elite Enemy movement is stopped/pathfinds around.                                  |
+|                       | Platform (`one_way`) | Elite Enemy moves horizontally on top. Pathfinding avoids moving under/through.      |
+| **Player Projectile** | Wall Obstacle (`solid`)| Projectile `kill()`s (returns to ObjectPool).                                        |
+|                       | Platform (`one_way`) | Projectile `kill()`s (returns to ObjectPool).                                        |
+
+---
+
+### 5. GAMEPLAY LOGIC & PHYSICS DATA
+
+*   **Win Condition**: A level is cleared when `enemy_count == 0` for the current wave, triggering transition to `Level-Up Screen`.
+*   **Loss Condition**: The game ends (`Game Over` state) when `player_hp == 0`.
+*   **Physics Properties**:
+    *   `COLLISION_TYPE: "solid"`: Used for `wall_tile.png` and other impassable environmental entities. Entities attempting to move into a "solid" object will have their movement vector adjusted to prevent overlap.
+    *   `COLLISION_TYPE: "one_way"`: Used for `platform_one_way.png` and similar platforms. Player can move freely on top. Player can move from below through its bottom edge. Downward movement from above will register collision from the top edge.
+
+---
+
+### 6. DYNAMIC IMAGE SCALING (MATHEMATICAL RULE)
+
+*   **Base Asset Resolution**: ALL generated visual assets are assumed to be 1024x1024 pixels.
+*   **Screen Resolution**: Game operates on a 1280x720 screen.
+*   **`IMAGE_SCALE` Calculation**: A float value for each entity determines its rendered size on screen, calculated as `(Desired_Pixel_Size / Base_Asset_Resolution)`.
+    *   Player/Enemy entities (`[sprite]player.png`, `[sprite]enemy_basic.png`): Approximately 80px (1024 * 0.08 = 81.92px). `IMAGE_SCALE: 0.08`.
+    *   Projectiles/Items (`[sprite]projectile_bullet.png`, `[sprite]item_xp_gem.png`): Approximately 20px (1024 * 0.02 = 20.48px). `IMAGE_SCALE: 0.02`.
+    *   UI Buttons (`[sprite]button_game_start.png`, etc.): Approximately 150px (1024 * 0.15 = 153.6px). `IMAGE_SCALE: 0.15`.
+    *   Backgrounds/Map Tiles (`[background]game_map_tile.png`): Approximately 1280px (1024 * 1.25 = 1280px) to ensure horizontal screen fill. `IMAGE_SCALE: 1.25`.
+
+---
+
+### PARAMETERS (game_config.json)
+
+```json
+{
+  "game_name": "Rogue Survival",
+  "config": {
+    "FPS": 60,
+    "SCREEN_SIZE": [1280, 720]
+  },
+  "entities": [
+    {
+      "name": "Player",
+      "image": "[sprite]player.png",
+      "properties": {
+        "IMAGE_SCALE": 0.08,
+        "PLAYER_SPEED": 5.0,
+        "PLAYER_HP": 100,
+        "PLAYER_COOLDOWN": 0.5
+      }
+    },
+    {
+      "name": "RegularEnemy",
+      "image": "[sprite]enemy_basic.png",
+      "properties": {
+        "IMAGE_SCALE": 0.08,
+        "ENEMY_SPEED": 3.0,
+        "ENEMY_HP": 20,
+        "ENEMY_DAMAGE": 10,
+        "ENEMY_ATTACK_COOLDOWN": 2.0
+      }
+    },
+    {
+      "name": "EliteEnemy",
+      "image": "[sprite]enemy_elite.png",
+      "properties": {
+        "IMAGE_SCALE": 0.12,
+        "ELITE_SPEED": 4.5,
+        "ELITE_HP": 80,
+        "ELITE_DAMAGE": 25,
+        "ELITE_ATTACK_COOLDOWN": 1.5
+      }
+    },
+    {
+      "name": "PlayerProjectile",
+      "image": "[sprite]projectile_bullet.png",
+      "properties": {
+        "IMAGE_SCALE": 0.02,
+        "PROJECTILE_SPEED": 8.0,
+        "PROJECTILE_DAMAGE": 15,
+        "PROJECTILE_LIFETIME": 1.5
+      }
+    },
+    {
+      "name": "ExperienceGem",
+      "image": "[sprite]item_xp_gem.png",
+      "properties": {
+        "IMAGE_SCALE": 0.02,
+        "XP_VALUE": 10
+      }
+    },
+    {
+      "name": "WallObstacle",
+      "image": "[background]wall_tile.png",
+      "properties": {
+        "IMAGE_SCALE": 0.08,
+        "COLLISION_TYPE": "solid"
+      }
+    },
+    {
+      "name": "Platform",
+      "image": "[background]platform_one_way.png",
+      "properties": {
+        "IMAGE_SCALE": 0.08,
+        "COLLISION_TYPE": "one_way"
+      }
+    },
+    {
+      "name": "UIButtonGameStart",
+      "image": "[sprite]button_game_start.png",
+      "properties": {
+        "IMAGE_SCALE": 0.15
+      }
+    },
+    {
+      "name": "UIButtonRules",
+      "image": "[sprite]button_rules.png",
+      "properties": {
+        "IMAGE_SCALE": 0.15
+      }
+    },
+    {
+      "name": "UIButtonQuit",
+      "image": "[sprite]button_quit.png",
+      "properties": {
+        "IMAGE_SCALE": 0.15
+      }
+    },
+    {
+      "name": "UIButtonContinue",
+      "image": "[sprite]button_continue.png",
+      "properties": {
+        "IMAGE_SCALE": 0.15
+      }
+    },
+    {
+      "name": "UIButtonRestart",
+      "image": "[sprite]button_restart.png",
+      "properties": {
+        "IMAGE_SCALE": 0.15
+      }
+    },
+    {
+      "name": "UIButtonBackToMainMenu",
+      "image": "[sprite]button_back_to_main.png",
+      "properties": {
+        "IMAGE_SCALE": 0.15
+      }
+    },
+    {
+      "name": "GameMapTile",
+      "image": "[background]game_map_tile.png",
+      "properties": {
+        "IMAGE_SCALE": 1.25
+      }
+    }
+  ]
+}
+```

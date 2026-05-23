@@ -63,22 +63,11 @@ def generate_whole(user_prompt: str):
 
 if __name__ == "__main__":
     print("🎮 AI Game Creator")
-    user_request = input("Please enter the game you want to create (e.g., Snake): ")
+    #user_request = input("Please enter the game you want to create (e.g., Snake): ")
     
     #Example for testing
     user_request = """
-    I want to make a fast-paced 2D top-down shooting game in Python using pygame, just like "Soul Knight". It needs to be a flat top-down view, so there is no jumping, gravity, or high/low terrain—just characters moving around on a flat floor. 
-
-    Please give me the COMPLETE, fully runnable Python code in a single file. Don't leave any missing parts, "pass", or "TODO" comments. I want to be able to run it immediately!
-
-    Here is how the game should work:
-    1. Stats & Combat: Characters have Health (HP), Energy (MP), Attack (ATK), and Armor (DEF). Armor works like a regenerating shield: when hit, Armor takes damage first. If the player hides and doesn't get hit for a while, the Armor slowly recharges. Damage is simply Attack minus Armor. But make sure it always does at least 1 damage, otherwise enemies will be unkillable!
-    2. Controls: I use W, A, S, D to move. The player character must ALWAYS face my mouse pointer. Left-clicking shoots bullets towards the mouse. Right-clicking temporarily boosts my Armor.
-    3. The Dodge Roll (Crucial!): Pressing Space makes the character roll quickly. During this roll, the character MUST be completely invincible so I can dodge straight through enemy bullets safely. Pressing Q uses a special skill that costs Energy.
-    4. Enemies & Drops: There are melee monsters that run straight at me to hit me, and ranged monsters that stay back and shoot bullets at me. When they die, they drop gold coins and blue energy orbs. 
-    5. Rooms: The map has different connected rooms. If I walk into a monster room, the doors lock immediately! I have to defeat every single monster to unlock the doors, and a reward chest should appear. There are also safe rooms with friendly NPCs where I can talk to them and spend my gold coins to upgrade my stats.
-    6. The Boss: The last room has a huge Boss. It has a ton of HP and shoots crazy circle bullet patterns all over the place. If I kill it, show a "Victory" screen. If I die, show a "Game Over" screen.
-    7. Balance: Please make sure the numbers make sense! The game should feel fair—not too easy, but I shouldn't die in one hit either. Please write clean code using good classes, with English variables and comments. Keep the game running smoothly without lagging even if there are lots of bullets!
+    A classic Snake Game
     """
 
     #user_request = input("Please enter the game you want to create (e.g., Snake): ")
